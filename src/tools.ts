@@ -110,8 +110,18 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       inputSchema: {
         lane,
         picks: lenient(z.array(z.string()).max(30)).default([]).describe("Refs, best first, e.g. [\"W2\", \"K1\", \"W5\"]."),
-        why: lenient(z.record(z.string(), z.string()), false)
-          .optional()
+        // Weaker models often send one sentence here instead of an object. Accept it and drop it
+        // (W picks carry their own reasons) rather than fail validation and cost a turn.
+        why: z
+          .preprocess((v) => {
+            if (typeof v !== "string") return v;
+            try {
+              const parsed = JSON.parse(v);
+              return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
+            } catch {
+              return undefined;
+            }
+          }, z.record(z.string(), z.string()).optional())
           .describe('Optional short reasons for K/C picks, quoted or attributed to a text source: {"K1": "Critical: \'acid-tipped breakbeats\'"}. W picks already have theirs.'),
         reject: lenient(z.array(z.string())).default([]).describe("Refs that don't fit this lane at all; they won't be offered again."),
         thin: z.boolean().default(false).describe("True if the research came back limited."),

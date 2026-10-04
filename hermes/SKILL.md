@@ -1,7 +1,7 @@
 ---
 name: spotify-discovery
 description: Add one genre lane's tracks to today's Spotify discovery playlist. The spotify-discovery MCP server fetches, verifies, dedups, adds and saves; you research and judge.
-version: 1.2.0
+version: 1.3.0
 platforms: [linux]
 metadata:
   hermes:
@@ -54,6 +54,8 @@ Call `delegate_task` with `tasks` as a list holding exactly one task. Its goal i
 > artist | track | release | label | release date | why it fits, attributed | source URL
 > Add one line per relevant new label: LABEL | label name | URL | one-line description
 > No JSON, no numbering, no code fences. Call verify_tracks as many times as you need; each call adds to the run.
+>
+> Use only verify_tracks from the spotify-discovery tools. Never call discovery_begin, discovery_review, discovery_finish or discovery_status: choosing the tracks is not your job, and calling them ends the lane early.
 >
 > When you're done, reply with one line only: DONE, then how many tracks verify_tracks marked with a check mark.
 

@@ -206,6 +206,15 @@ describe("a lane run", () => {
     expect(history.tracks.filter((t) => t.title === "Chatter")).toHaveLength(1);
   });
 
+  it("accepts why as a plain sentence instead of failing", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"], why: "Hanzom calls it an assault; fits the lane." });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain("Added 1 track(s)");
+  });
+
   it("accepts picks as a JSON string and a dry run saves nothing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
