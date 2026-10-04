@@ -10,7 +10,8 @@ Tested 2026-10-03 against a Development Mode app, using a user token with the pl
 | A label's releases for a period | `q=label:"Critical Music" year:2026` (or `year:2025-2026`) | Results are **not** sorted by date; page through them all and filter on `release_date`. 49 results for Critical in 2026 |
 | An artist's releases | `GET /artists/{id}/albums?include_groups=album,single` | Has `release_date` and `release_date_precision`. Resolve the artist id once by search, then cache it |
 | A release's tracks | `GET /albums/{id}/tracks` | |
-| One album, with its label | `GET /albums/{id}` | `label` was removed, but `copyrights` is still there and its ℗ line usually names the label ("2026 Arrival Archetype") |
+| A track's label | `GET /tracks/{id}` → `album.id`, then `GET /albums/{id}` | `label` was removed, but `copyrights` is still there and its ℗ line names the label: "2026 Critical Music", "(P) 2026 Some Pulp Recordings". It was right for all 5 tracks checked on 2026-10-03, including Skrimor's "Kraken" on Hanzom Music, which the 10/2 report had wrongly put on Hospital Records. Self-released music names the artist, or their own imprint |
+| A track's ISRC | `external_ids.isrc` on tracks, in `GET /tracks/{id}` and in search results | **Still returned**, although the migration guide lists it as removed. `isrc:` search also works. Use it as an extra dedup key while it lasts, but don't depend on it |
 | Exact track lookup | `q=track:"Chatter" artist:"Sully"` (type `track`) | Precise. `album:"…"` and `label:"…"` narrow it further. Found "Minimalist — Reborn", which a plain search had missed the day before |
 | Create a playlist | `POST /me/playlists` | Replaces `POST /users/{id}/playlists` |
 | Read or add playlist items | `GET` / `POST /playlists/{id}/items` | Replaces `/tracks`, which now returns 403. Items come back under `item`, not `track` |
@@ -23,11 +24,11 @@ Tested 2026-10-03 against a Development Mode app, using a user token with the pl
 | `GET /browse/new-releases` (403) | No genre-wide "what's new"; the feed has to go label by label and artist by artist |
 | `GET /artists/{id}/related-artists` (403) and `/recommendations` (404) | No "similar artists" from Spotify; that stays with the web research |
 | `GET /artists/{id}/top-tracks` (403) | Not needed |
-| `genres` on artists (absent) and `genre:` search (always empty) | Core artists can't be sorted into lanes by genre. Lanes list their artists in `lanes.json` and learn more from picks |
+| Genres: absent on artists, an always-empty list on albums, and `genre:` search returns nothing | Core artists can't be sorted into lanes by genre, and a track's genre can't be checked. Lanes list their artists in `lanes.json` and learn more from picks |
+| `GET /audio-features` and `/audio-analysis` (403) | No tempo, energy or key; BPM claims can't be checked |
 | `label` on albums | Use `label:` in search, or the ℗ line in `copyrights` |
 | `popularity` and `followers` | Can't rank by how underground something is |
 | Batch `GET /tracks`, `/albums`, `/artists` | One request per item; still fine at this scale |
-| `external_ids` on tracks (ISRC) | Dedup can't use ISRC. Use the URI plus a normalized artist and title key |
 
 ## Limits
 

@@ -23,7 +23,8 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
 3. **Fetches the feed** for this lane since its `last_run`:
    - each label (seed, found and promoted): `label:"…" tag:new` album search, paged; if `last_run` is more than 13 days ago, `label:"…" year:…` filtered by `release_date`;
    - each lane artist: `/artists/{id}/albums`, filtered by `release_date`;
-   - each release's tracks, grouped by release.
+   - each release's tracks, grouped by release;
+   - for releases found through an artist, the label from the album's ℗ line. That's one extra request per release, so the work list can show the label for every item.
 4. **Adds new candidates to the lane's pool**, skipping anything recommended before (history, by URI or by normalized key) or already picked, rejected or expired.
 5. **Writes a run file** with refs, and returns the work list.
 
@@ -65,8 +66,9 @@ For each candidate the server:
    4. a plain `A T` search, accepting only a strict artist match
 2. checks the match: the artist key must contain the candidate's primary artist key, and the title keys must agree once edit and mix suffixes are removed;
 3. picks the right version (see [spotify-api.md](spotify-api.md#picking-the-right-version-of-a-track));
-4. dedups against history, today's playlist and the pool;
-5. saves `why` and `source_url` against a new `W` ref in the run file.
+4. reads the release's label from its ℗ copyright line and compares it with the label the source claimed. A mismatch doesn't block the track, but its line says so (`label: Hanzom Music, not Hospital as claimed`), and the report uses the real label;
+5. dedups against history, today's playlist and the pool, by URI, by ISRC while Spotify still returns it, and by key;
+6. saves `why` and `source_url` against a new `W` ref in the run file.
 
 Result, one line each:
 
