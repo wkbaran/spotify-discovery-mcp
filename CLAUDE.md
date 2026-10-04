@@ -2,7 +2,7 @@
 
 Common mistakes and confusion points in this project. Add to this list when something surprises you.
 
-- **Status: 0.1.0 is built and tested, not deployed.** Keep README.md, docs/design.md and the code in agreement, especially the pick rules in the README, which the user asked to have explained clearly. `test/flow.test.ts` runs whole lane runs against `test/fake-spotify.ts`; extend the fake when the code uses a new endpoint.
+- **Status: running on Hermes since 2026-10-03.** Keep README.md, docs/design.md and the code in agreement, especially the pick rules in the README, which the user asked to have explained clearly. `test/flow.test.ts` runs whole lane runs against `test/fake-spotify.ts`; extend the fake when the code uses a new endpoint.
 - **The user is the reader of the README; a weak local model (Qwen 27B on Ollama) is the reader of tool results and descriptions.** Write tool results as short plain text with refs. Never return JSON or raw Spotify objects.
 - **Read docs/spotify-api.md before calling Spotify.** Development Mode lost a lot in February 2026: search `limit` is at most 10, `/playlists/{id}/tracks` is 403 (use `/items`, whose entries are under `item`), and album `label`, artist `genres`, `popularity`, related artists, recommendations and new releases are gone. `label:` and `tag:new` search filters still work.
 - **Spotify auth is this server's own** (its own grant and refresh token, in its own file). Never read or refresh Hermes's `/opt/data/auth.json`, so the two can't invalidate each other's tokens.
@@ -17,4 +17,5 @@ Common mistakes and confusion points in this project. Add to this list when some
 - **`label:` search is loose** ("Vision Recordings" also finds Lateral Vision Recordings, "Critical Music" finds The Criticals). The feed shows each release's real label from its ℗ line, so the model sees what it is.
 - **MCP over stdio:** stdout is the protocol channel in server mode. Use `console.error` for logs.
 - **Hermes specifics** (from medium-reader-mcp's notes): Hermes pauses an MCP server for 60 s after 3 consecutive error results, so be lenient (fix what you can, warn, and only error when nothing sensible can be done). The MCP tool timeout is 300 s. Array arguments should also accept a JSON string, because weaker models send them that way.
+- **`docs/discovery-tools.md` is checked by `test/docs-example.test.ts`.** Changing a tool's output or input fields fails that test until the doc is updated. Regenerate the output blocks with `UPDATE_DOCS=1 npx vitest run test/docs-example.test.ts`, review the diff, and update the argument tables and prose by hand.
 - TypeScript is 7.x, the native compiler. If vitest fails with `Cannot find native binding` (rolldown), delete `node_modules` and `package-lock.json` and run `npm install` again.

@@ -1,6 +1,6 @@
 # Design
 
-The README explains how a lane run works and how picks are mixed. This page covers the tools, the files, and the behaviour behind them.
+The README explains how a lane run works and how picks are mixed. This page covers the tools, the files, and the behaviour behind them. [discovery-tools.md](discovery-tools.md) follows one run with a diagram, each tool's arguments and real output.
 
 ## Principles
 
@@ -28,32 +28,11 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
 4. **Adds new candidates to the lane's pool**, skipping anything recommended before (history, by URI or by normalized key) or already picked, rejected or expired.
 5. **Writes a run file** with refs, and returns the work list. `begin` changes nothing else; what it learned (expired items, pending re-checks, artist ids, active labels) is applied by `finish`.
 
-Example result:
-
-```
-Lane a-dnb — Neurofunk, techstep, and experimental DnB
-Today's playlist: hermes20261002 (14 tracks so far)
-Baseline: dark/technical DnB, neurofunk, techstep … Noisia, Vision, Blackout, Critical lineage
-Pick 3–6. At most 3 from K/C unless there are no verified W items. At most 2 by core artists.
-
-New from known sources (since 2026-09-29):
-K1  QZB — Dreams To Dust (album, 2026-10-02, Critical) · 9 tracks:
-    K1.1 Low Light Protocol · K1.2 Colder At The Peak · K1.3 … (+6, ask for K1)
-K2  Eatbrain — Black Tears (2026-09-25) [seed label]
-K3  Omneum — Welcome to Earth Vol. 4 (2026-07-22) [core artist]
-…
-Carried over:
-C1  Neonlight — Leaving Wonderland (2026-08-10) · passed once
-Now on Spotify (was pending):
-K9  Gridlok — Fever (2026-10-23)
-
-Covered labels — research should look elsewhere: Eatbrain, Blackout, Critical, Vision, …, Stonx Music
-Covered artists: Omneum, Sam Binga, Skrimor, …
-```
+[discovery-tools.md](discovery-tools.md#1-discovery_begin) shows a real result for a made-up lane.
 
 The list is capped at `feed_cap` entries (default 25). Ordering is fixed: promoted labels, then lane artists, then seed labels, then found labels, then carried-over items, each group newest first. The rest are counted ("+9 more not shown") and stay in the pool.
 
-### `verify_tracks(lane, candidates)`
+### `verify_tracks(lane, text | candidates)`
 
 `text`: the research subagent's reply, unchanged. The server parses it: one track per line, `artist | track | release | label | date | why | URL`, in any decoration (bullets, numbering, bold), with URLs and dates found wherever they sit, and `LABEL | name | URL | note` lines for new labels. The model doesn't have to retype anything, so it can't renumber or mangle the finds. `candidates`, the same fields as objects, is also accepted.
 
@@ -70,16 +49,13 @@ For each candidate the server:
 5. dedups against history, today's playlist and the pool, by URI, by ISRC while Spotify still returns it, and by key;
 6. saves `why` and `source_url` against a new `W` ref in the run file.
 
-Result, one line each:
-
-```
-W1 ✓ Neonlight — LEAVING WONDERLAND · Eatbrain · 2026-08-10
-W2 pending Gridlok — Fever · not on Spotify yet (source says out 2026-10-23); will re-check
-W3 dup Sulphur — Dat Luv · recommended 2026-09-18 (b-ukg)
-W4 ✗ Minimalist — Reborn · closest was a different artist named "Minimalist"; not added
-```
+One line each; [discovery-tools.md](discovery-tools.md#2-web-research-and-verify_tracks) shows a real result and the four outcomes.
 
 It can be called more than once in a run, for example after a retried research task. Refs keep counting up.
+
+### `discovery_review(lane)`
+
+Read-only. Lists everything pickable in the current run from the run file: verified web finds with their reasons, then the K and C tracks, the items that can't be picked (pending, dup) and the pick limits. The main model calls it after the research, so it never needs the subagent's text.
 
 ### `discovery_finish(lane, picks, why?, reject?, thin?, dry_run?)`
 
@@ -99,22 +75,7 @@ Steps, in order:
 
 Calling it again on a finished run re-renders the same report and writes nothing.
 
-The report template:
-
-```
-**Lane:** Neurofunk, techstep, and experimental DnB
-**Playlist:** hermes20261002 — <https://open.spotify.com/playlist/…>
-
-**Added (4):**
-- **Sully — Chatter** (Critical Music, 2026-09-11). Critical: "acid-tipped breakbeats…" <source>
-- … · *core artist*
-
-Dropped by limits: K5 (feed limit 3)
-Already recommended: Sulphur — Dat Luv (2026-09-18)
-Pending (not on Spotify yet): Gridlok — Fever, re-checking until 2026-11-13
-New labels: DnB Doctor, Stonx Music
-Gone quiet: Night Bass (no releases in 8 runs; dropped)
-```
+[discovery-tools.md](discovery-tools.md#4-discovery_finish) shows a real report.
 
 ### `discovery_status(lane?)` and repairs
 
