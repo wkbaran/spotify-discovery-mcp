@@ -52,3 +52,15 @@ Feed items (K) can use the same lookup, which would give every feed pick a sourc
 - **Beatport, SoundCloud and Bandcamp are scraped.** None has an open API: Beatport's API needs partner access, and SoundCloud has stopped registering apps. Page formats change without notice, and heavy use could get the Hermes host blocked. Keep it light: about one lookup per verified track, twice a week. Cache results by ISRC, and fail open (no genre line) when a page doesn't parse.
 - Beatport search ranking is loose (searching "Sully Chatter" returned a 2009 hip-hop "Sully" first), so the artist and label check matters.
 - Discogs asks API clients for a descriptive User-Agent, and a token is free. Use one.
+
+## Why not Firecrawl
+
+Tested 2026-10-03 against the self-hosted Firecrawl (`http://firecrawl.home:3002`, Playwright renderer, no fire-engine, which is the paid add-on). It doesn't help with these sources:
+
+| Page | Firecrawl result | Direct fetch |
+|---|---|---|
+| Bandcamp search | The same "A required part of this site couldn't load" challenge page, even with `waitFor: 5000`; `actions` need fire-engine | The same challenge |
+| Beatport search | 2.4 s. The markdown has only the site menu (323 characters), because results are drawn client-side from `__NEXT_DATA__`, which markdown drops. `json` extraction returned `null` | Under 1 s, every field from `__NEXT_DATA__` |
+| SoundCloud track | 7.7 s. The markdown has the genre and description, but no tags or ISRC | Under 1 s. `__sc_hydration` has genre, tags, label, ℗ line and ISRC |
+
+These sites embed their data as JSON in the page, so a plain fetch and parse is faster and gives more than rendering and converting to markdown. Firecrawl's LLM extraction would also need a model configured (`OPENAI_*` or `OLLAMA_BASE_URL`), and it would add a slow, non-deterministic step to data that's already structured. Firecrawl stays useful where it already works: as Hermes's `web_extract` backend for the blogs and label pages the research subagent reads.
