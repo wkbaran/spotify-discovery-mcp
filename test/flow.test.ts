@@ -206,6 +206,18 @@ describe("a lane run", () => {
     expect(history.tracks.filter((t) => t.title === "Chatter")).toHaveLength(1);
   });
 
+  it("credits a label found and picked in the same run", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: `${RESEARCH}\nLABEL | Hanzom Music | https://example.com/hanzom | Neurofunk label` });
+    const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
+    expect(r.text).toContain("New labels for this lane: DnB Doctor, Hanzom Music");
+    expect(r.text).toContain("Reply with one line: Done: a-dnb");
+    const state = await readJson<LaneState>("lanes/a-dnb.json");
+    expect(state.labels[Object.keys(state.labels).find((k) => state.labels[k]!.name === "Hanzom Music")!]).toMatchObject({ origin: "promoted", picks: 1 });
+    expect(state.labels["dnb doctor"]).toMatchObject({ origin: "found", picks: 0 });
+  });
+
   it("accepts why as a plain sentence instead of failing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
