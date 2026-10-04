@@ -118,7 +118,7 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
   const lanes = await loadLanes(ctx.dir);
   const lane = getLane(lanes, laneId);
   const run = await openRun(ctx.dir, lane.id);
-  if (run.finished) return { ok: true, text: `This run was already finished; nothing changed.\n${REPORT_MARKER}\n${run.finished.report}` };
+  if (run.finished) return { ok: true, text: `This run was already finished; nothing changed. Reply with one line: Done: ${run.lane}\n${REPORT_MARKER}\n${run.finished.report}` };
 
   // Refs: a multi-track release ref means its first track.
   const notes: string[] = [];
@@ -207,7 +207,7 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
   });
   run.finished = { at: isoSeconds(now), report };
   await runStore(ctx.dir).write(run.id, run);
-  const head = [`Saved. Added ${playlistResult.added.length} track(s) to ${run.playlist.name}.`, ...notes, ...labelOutcome.warnings].join("\n");
+  const head = [`Saved. Added ${playlistResult.added.length} track(s) to ${run.playlist.name}.`, ...notes, ...labelOutcome.warnings, `Reply with one line: Done: ${run.lane}`].join("\n");
   return { ok: true, text: `${head}\n${REPORT_MARKER}\n${report}` };
 }
 
@@ -230,6 +230,15 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
   const rejectedKeys = new Set(c.rejected.map((i) => i.key));
   const seedLabels = new Set(lane.labels.map(labelKey));
   const seedArtists = new Set(lane.artists.map(textKey));
+
+  // Labels the research found. Added before the picks are counted, so a label
+  // found and picked in the same run is credited (and promoted) straight away.
+  for (const l of c.newLabels) {
+    const k = labelKey(l.name);
+    if (!k || seedLabels.has(k) || s.labels[k]) continue;
+    s.labels[k] = { name: l.name.trim(), origin: "found", first_seen: day, source_url: l.source_url, note: l.note, picks: 0, quiet_runs: 0 };
+    result.added.push(l.name.trim());
+  }
 
   // Picks and rejections are done with.
   for (const i of c.kept) {
@@ -295,12 +304,6 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
       s.seed_quiet[k] = active.has(k) ? 0 : (s.seed_quiet[k] ?? 0) + 1;
       if (s.seed_quiet[k] === lane.quiet_runs) result.quietSeeds.push(lane.labels.find((l) => labelKey(l) === k) ?? k);
     }
-  }
-  for (const l of c.newLabels) {
-    const k = labelKey(l.name);
-    if (!k || seedLabels.has(k) || s.labels[k]) continue;
-    s.labels[k] = { name: l.name.trim(), origin: "found", first_seen: day, source_url: l.source_url, note: l.note, picks: 0, quiet_runs: 0 };
-    result.added.push(l.name.trim());
   }
 
   // Bounds.
