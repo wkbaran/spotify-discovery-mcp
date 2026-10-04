@@ -102,6 +102,6 @@ Not available yet; see [docs/design.md](docs/design.md#setup) for the plan. In o
 
 ## Spotify API notes
 
-This uses Spotify's Web API as a Development Mode app. The February 2026 changes removed several things the design would otherwise use: label fields, artist genres, related artists, recommendations and new-releases browsing. Search now returns at most 10 results per page. [docs/spotify-api.md](docs/spotify-api.md) lists what was tested and what still works.
+This uses Spotify's Web API as a Development Mode app. The February 2026 changes removed several things the design would otherwise use: label fields, artist genres, related artists, recommendations and new-releases browsing. Search now returns at most 10 results per page. [docs/spotify-api.md](docs/spotify-api.md) lists what was tested and what still works. Genre, BPM and key come from other sources instead; see [docs/metadata-sources.md](docs/metadata-sources.md).
 
 MIT licensed.

@@ -25,7 +25,7 @@ Tested 2026-10-03 against a Development Mode app, using a user token with the pl
 | `GET /artists/{id}/related-artists` (403) and `/recommendations` (404) | No "similar artists" from Spotify; that stays with the web research |
 | `GET /artists/{id}/top-tracks` (403) | Not needed |
 | Genres: absent on artists, an always-empty list on albums, and `genre:` search returns nothing | Core artists can't be sorted into lanes by genre, and a track's genre can't be checked. Lanes list their artists in `lanes.json` and learn more from picks |
-| `GET /audio-features` and `/audio-analysis` (403) | No tempo, energy or key; BPM claims can't be checked |
+| `GET /audio-features` and `/audio-analysis` (403) | No tempo, energy or key from Spotify. Beatport, SoundCloud and Discogs fill the gap; see [metadata-sources.md](metadata-sources.md) |
 | `label` on albums | Use `label:` in search, or the ℗ line in `copyrights` |
 | `popularity` and `followers` | Can't rank by how underground something is |
 | Batch `GET /tracks`, `/albums`, `/artists` | One request per item; still fine at this scale |
