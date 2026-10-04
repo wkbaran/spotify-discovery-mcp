@@ -1,5 +1,5 @@
 import { textKey } from "job-ledger";
-import { quoteSafe, type SpotifyClient, type Track } from "../spotify/client.js";
+import { quoteSafe, rethrowRateLimit, type SpotifyClient, type Track } from "../spotify/client.js";
 import { artistMatches, labelFromCopyrights, releaseDay, sameLabel, splitArtists, titleKey, titleMatches } from "./keys.js";
 
 /** A track the web research proposed. */
@@ -143,8 +143,8 @@ export async function findOnSpotify(client: SpotifyClient, c: Candidate): Promis
   let label: string | undefined;
   try {
     if (best.album?.id) label = labelFromCopyrights((await client.album(best.album.id)).copyrights);
-  } catch {
-    // The label is a nice-to-have.
+  } catch (err) {
+    rethrowRateLimit(err); // the label is a nice-to-have; the rate limit isn't
   }
   const labelNote = c.label && label && !sameLabel(c.label, label) ? `label is ${label}, not ${c.label} as the source said` : undefined;
   return { track: best, label: label ?? c.label, labelNote };

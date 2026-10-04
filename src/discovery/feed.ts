@@ -1,5 +1,5 @@
 import { textKey } from "job-ledger";
-import { quoteSafe, type Album, type SpotifyClient, type Track } from "../spotify/client.js";
+import { quoteSafe, rethrowRateLimit, type Album, type SpotifyClient, type Track } from "../spotify/client.js";
 import { labelContains, labelFromCopyrights, labelKey, releaseDay } from "./keys.js";
 import type { Lane } from "./lanes.js";
 import type { LaneState } from "./state.js";
@@ -81,6 +81,7 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
       if (found.length) activeLabels.add(labelKey(src.name));
       for (const a of found) if (!albums.has(a.id)) albums.set(a.id, { album: a, label: src.name, via: { kind: "label", name: src.name, group: src.group }, tracks: [] });
     } catch (err) {
+      rethrowRateLimit(err);
       notes.push(`Label ${src.name}: search failed (${short(err)}).`);
     }
   }
@@ -99,6 +100,7 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
         if (!albums.has(a.id)) albums.set(a.id, { album: a, via: { kind: "artist", name, group: "artist" }, tracks: [] });
       }
     } catch (err) {
+      rethrowRateLimit(err);
       notes.push(`Artist ${name}: lookup failed (${short(err)}).`);
     }
   }
@@ -118,6 +120,7 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
       if (r.via.kind === "label") matched.add(labelKey(r.via.name));
       kept.push(r);
     } catch (err) {
+      rethrowRateLimit(err);
       notes.push(`${r.album.name}: couldn't read its tracks (${short(err)}).`);
     }
   }

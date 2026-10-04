@@ -21,6 +21,8 @@ export class FakeSpotify {
   playlists = new Map<string, { name: string; uris: string[] }>();
   created = 0;
   log: string[] = [];
+  /** Set to answer every request with a quota 429 and this Retry-After, in seconds. */
+  quotaRetryAfter?: number;
   private n = 0;
 
   addRelease(o: { artist: string; title: string; tracks: string[]; label: string; date: string; type?: string; extraArtists?: string[] }): Track[] {
@@ -51,6 +53,9 @@ export class FakeSpotify {
     const path = u.pathname.replace(/^\/v1/, "");
     this.log.push(`${method} ${path}${u.search}`);
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
+    if (this.quotaRetryAfter !== undefined) {
+      return new Response(JSON.stringify({ error: { status: 429, message: "Too many requests", reason: "QUOTA_EXCEEDED" } }), { status: 429, headers: { "retry-after": String(this.quotaRetryAfter) } });
+    }
     const limit = Number(u.searchParams.get("limit") ?? 5);
     const offset = Number(u.searchParams.get("offset") ?? 0);
     const page = <T>(items: T[]) => ({ items: items.slice(offset, offset + limit), next: offset + limit < items.length ? "more" : null, total: items.length });

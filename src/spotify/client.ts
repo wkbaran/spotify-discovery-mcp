@@ -54,6 +54,30 @@ export class SpotifyError extends Error {
   }
 }
 
+/**
+ * Spotify asked us to wait longer than is worth waiting (a quota block can be hours).
+ * Thrown at once, and for every later request until `until`, so a tool call ends
+ * in seconds instead of grinding through its requests to the harness's timeout.
+ */
+export class RateLimitError extends SpotifyError {
+  constructor(
+    readonly until: Date,
+    reason: string,
+  ) {
+    const mins = Math.max(1, Math.round((until.getTime() - Date.now()) / 60_000));
+    super(`Spotify is rate-limiting this app${reason ? ` (${reason})` : ""} until ${until.toISOString().slice(0, 16)}Z, about ${mins} min from now.`, 429);
+    this.name = "RateLimitError";
+  }
+}
+
+/** Rethrow a rate-limit error from a catch that would otherwise skip one item and carry on. */
+export function rethrowRateLimit(err: unknown): void {
+  if (err instanceof RateLimitError) throw err;
+}
+
+/** Longest Retry-After worth waiting out inside one request, in seconds. */
+const MAX_WAIT_S = 60;
+
 /** Search's page size since February 2026 (Development Mode). */
 export const SEARCH_LIMIT = 10;
 
@@ -66,6 +90,8 @@ export const quoteSafe = (s: string) => s.replace(/["“”]/g, "").trim();
  */
 export class SpotifyClient {
   requests = 0;
+  /** While Spotify's Retry-After runs, requests fail at once without calling it. */
+  private blocked?: RateLimitError;
 
   constructor(
     private readonly tokens: Pick<TokenSource, "token">,
@@ -81,6 +107,7 @@ export class SpotifyClient {
     let waits = 0;
     let serverRetries = 0;
     for (;;) {
+      if (this.blocked && this.blocked.until.getTime() > Date.now()) throw this.blocked;
       const token = await this.tokens.token(forced);
       this.requests++;
       const res = await this.fetchImpl(url.toString(), {
@@ -92,11 +119,18 @@ export class SpotifyClient {
         forced = true;
         continue;
       }
-      if (res.status === 429 && waits < 3) {
-        waits++;
+      if (res.status === 429) {
         const after = Number(res.headers.get("retry-after") ?? "2");
-        await this.sleep(Math.min(30, Number.isFinite(after) ? after : 2) * 1000);
-        continue;
+        if (Number.isFinite(after) && after > MAX_WAIT_S) {
+          const body = safeJson(await res.text()) as { error?: { reason?: string; message?: string } } | undefined;
+          this.blocked = new RateLimitError(new Date(Date.now() + after * 1000), body?.error?.reason ?? body?.error?.message ?? "");
+          throw this.blocked;
+        }
+        if (waits < 3) {
+          waits++;
+          await this.sleep((Number.isFinite(after) ? after : 2) * 1000);
+          continue;
+        }
       }
       if (res.status >= 500 && serverRetries < 1) {
         serverRetries++;

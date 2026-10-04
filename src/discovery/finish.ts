@@ -1,5 +1,6 @@
 import { cleanRef, isoSeconds, laterIso, localDate, resolveRefs, textKey } from "job-ledger";
 import { fitsLane, beatportLookup, soundcloudLookup } from "../metadata/lookup.js";
+import { rethrowRateLimit } from "../spotify/client.js";
 import { addDays } from "./feed.js";
 import { labelKey, spotifyTrackKey, trackKey } from "./keys.js";
 import { getLane, loadCoreArtists, loadLanes, type Lane } from "./lanes.js";
@@ -69,6 +70,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
         else if (state.closed[pool.key]?.status === "rejected") Object.assign(item, { status: "dup", status_note: `rejected for this lane on ${state.closed[pool.key]!.date}` });
       }
     } catch (err) {
+      rethrowRateLimit(err);
       item = {
         ...{ key: guessKey, uri: "", artist: c.artist, artists: [c.artist], title: c.track, release: c.release ?? "", release_type: "", released: c.released ?? "", label: c.label, source: "web" as const, passes: 0, ...base },
         ref,

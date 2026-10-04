@@ -140,6 +140,7 @@ Spotify no longer exposes genres, so the server can't decide which lane a liked 
 | What fails | What happens |
 |---|---|
 | Spotify auth | `begin` returns one clear line: run `spotify-discovery-mcp login`. The skill tells the model to report it, not retry |
+| Spotify rate limit (a 429 with a Retry-After over 60 s, such as `QUOTA_EXCEEDED`) | The tool fails at once with one line naming when the block ends, and every later request in that server process fails without calling Spotify until then. Nothing is added or saved. Shorter Retry-Afters are waited out, up to three times per request |
 | Feed fetch (one label or artist) | It's skipped and listed in the work list; the run continues |
 | Feed fetch (all) | The work list says so; the lane runs on web finds alone |
 | Run ends before `finish` | Nothing is added or saved. The next run covers the same period; the pool still has everything |

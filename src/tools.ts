@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AuthError } from "./auth/tokens.js";
+import { RateLimitError } from "./spotify/client.js";
 import { discoveryBegin, type Ctx } from "./discovery/begin.js";
 import { discoveryFinish, discoveryReview, discoveryStatus, forget, markRecommended, verifyTracks } from "./discovery/finish.js";
 
@@ -19,7 +20,9 @@ export async function run(fn: () => Promise<CallToolResult>): Promise<CallToolRe
     return await fn();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return errorText(err instanceof AuthError ? `Spotify login needed: ${message} Report this in your reply; don't retry.` : `Error: ${message}`);
+    if (err instanceof AuthError) return errorText(`Spotify login needed: ${message} Report this in your reply; don't retry.`);
+    if (err instanceof RateLimitError) return errorText(`Spotify rate limit: ${message} Nothing was added or saved. Stop: don't call any spotify-discovery tool again in this run, and report this in your reply.`);
+    return errorText(`Error: ${message}`);
   }
 }
 

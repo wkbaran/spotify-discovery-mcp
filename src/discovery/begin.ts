@@ -1,7 +1,7 @@
 import { isoSeconds, localDate, textKey } from "job-ledger";
 import type { FetchLike } from "../auth/tokens.js";
 import { beatportLookup, fitsLane } from "../metadata/lookup.js";
-import { playlistUrl, type SpotifyClient, type Track } from "../spotify/client.js";
+import { playlistUrl, rethrowRateLimit, type SpotifyClient, type Track } from "../spotify/client.js";
 import { addDays, collectFeed, labelSources, type FeedRelease } from "./feed.js";
 import { labelKey, releaseDay, splitArtists, spotifyTrackKey } from "./keys.js";
 import { getLane, loadCoreArtists, loadLanes, playlistName, type Lane } from "./lanes.js";
@@ -72,7 +72,8 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
       }
       effects.pending_found.push(p.key);
       pendingNow.push({ ...toPoolItem(v.track, { source: "web", label: v.label, why: p.why, source_url: p.source_url, first_seen: p.first_seen }), passes: 0 });
-    } catch {
+    } catch (err) {
+      rethrowRateLimit(err);
       effects.pending_checked.push(p.key);
     }
   }

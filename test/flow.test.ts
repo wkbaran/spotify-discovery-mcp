@@ -218,6 +218,20 @@ describe("a lane run", () => {
     expect(state.labels["dnb doctor"]).toMatchObject({ origin: "found", picks: 0 });
   });
 
+  it("stops at once when Spotify's quota is exceeded, and saves nothing", async () => {
+    const client = await connect();
+    spotify.quotaRetryAfter = 11991;
+    const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(begin.isError).toBe(true);
+    expect(begin.text).toMatch(/^Spotify rate limit: Spotify is rate-limiting this app \(QUOTA_EXCEEDED\) until .*Z, about 200 min from now\. Nothing was added or saved\. Stop/);
+    // One request, then every later one fails without calling Spotify.
+    expect(spotify.log).toHaveLength(1);
+    const again = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(again.text).toContain("QUOTA_EXCEEDED");
+    expect(spotify.log).toHaveLength(1);
+    expect(spotify.created).toBe(0);
+  });
+
   it("accepts why as a plain sentence instead of failing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
