@@ -27,7 +27,8 @@ Each step is done either by **code** (this server) or by the **model**.
 | 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered, and hands its finds straight to `verify_tracks(lane, text)`. The server checks each one on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
 | 3 | `discovery_review(lane)` | code | Lists everything pickable in the run from the server's own records: verified web finds with their reasons, then the feed |
 | 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state, and returns the finished report |
-| 5 | Reply | model | Sends the report unchanged |
+| 5 | Reply | model | One line, `Done: a-dnb`. The lane job itself delivers nothing (`deliver: local`) |
+| 6 | `spotify-discovery-mcp report` | code (a no-model cron job) | Prints each finished lane report once, plus a warning for a run that never finished. Hermes posts the output to Discord |
 
 The research never passes through the main model. On 2026-10-03 the first live run had Qwen copy the subagent's reply into `verify_tracks`; it mangled the JSON escaping four times, and the run ran out of road before finishing. Now the subagent calls `verify_tracks` itself and returns only "DONE".
 
@@ -145,7 +146,10 @@ Install [hermes/SKILL.md](hermes/SKILL.md) as the `spotify-discovery` skill. The
 
 - set `enabled_toolsets` to `["delegation", "web", "spotify-discovery"]`;
 - set skills to `["spotify-discovery", "searxng-search"]`;
-- set the prompt to "Run the spotify-discovery skill for lane a-dnb." (with that job's lane).
+- set the prompt to "Run the spotify-discovery skill for lane a-dnb." (with that job's lane);
+- set `deliver` to `local`.
+
+The reports reach Discord through a no-model job instead, because copying a long report is where a weak model fails. In the second live run, Qwen got a perfect report back from `discovery_finish`, thought for 13 minutes, then sent its persona prompt instead. Copy [hermes/spotify_discovery_report.sh](hermes/spotify_discovery_report.sh) to Hermes's `scripts/` and create a `no_agent` job that runs it every 5 minutes during the lanes' window, delivering to the channel the lanes used. Empty output is a silent run.
 
 ### Settings
 

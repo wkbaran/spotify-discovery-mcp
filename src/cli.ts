@@ -4,6 +4,7 @@ import { login } from "./auth/login.js";
 import { authPath, DEFAULT_REDIRECT_URI, discoveryDir } from "./config.js";
 import { discoveryStatus } from "./discovery/finish.js";
 import { importLegacy } from "./discovery/import.js";
+import { pendingReports } from "./discovery/report.js";
 import { serve } from "./server.js";
 import { SpotifyClient } from "./spotify/client.js";
 import { VERSION } from "./version.js";
@@ -18,6 +19,9 @@ Usage:
       --paste                                 Paste the redirected URL instead of running a local listener
   spotify-discovery-mcp status                Check the login and show each lane's state
   spotify-discovery-mcp import <legacy-dir>   Seed history.json from recommendation_history.json and today_playlist.json
+  spotify-discovery-mcp report                Print finished lane reports not printed yet, and runs that never finished
+      --stall-minutes <n>                     When an unfinished run counts as stalled (default 90)
+      --mark-only                             Mark what's due as printed, without printing it
 
 Environment:
   SPOTIFY_DISCOVERY_DIR    Data directory (lanes.json and the state files). Required for the tools.
@@ -73,6 +77,16 @@ async function main(argv: string[]): Promise<number> {
         return 2;
       }
       console.log(await importLegacy(dir, rest[0]));
+      return 0;
+    }
+    case "report": {
+      const dir = discoveryDir();
+      if (!dir) {
+        console.error("SPOTIFY_DISCOVERY_DIR isn't set.");
+        return 2;
+      }
+      const out = await pendingReports(dir, { stallMinutes: Number(flag("stall-minutes") ?? 90), windowHours: 24, markOnly: flag("mark-only") === "true" });
+      if (out) console.log(out);
       return 0;
     }
     case "help":

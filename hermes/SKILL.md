@@ -1,7 +1,7 @@
 ---
 name: spotify-discovery
 description: Add one genre lane's tracks to today's Spotify discovery playlist. The spotify-discovery MCP server fetches, verifies, dedups, adds and saves; you research and judge.
-version: 1.1.0
+version: 1.2.0
 platforms: [linux]
 metadata:
   hermes:
@@ -15,9 +15,9 @@ metadata:
 Scheduled (cron). The job prompt names the lane, for example "Run the spotify-discovery skill for lane a-dnb."
 
 ## How it works
-The server does everything that isn't judgment. It creates or finds today's playlist, fetches new releases from the lane's known labels and artists, checks web finds on Spotify, drops anything already recommended, applies the lane's pick limits, adds the tracks, saves all state, and writes the report. A research subagent searches the web and hands its finds straight to the server. You choose the best tracks and send the report.
+The server does everything that isn't judgment. It creates or finds today's playlist, fetches new releases from the lane's known labels and artists, checks web finds on Spotify, drops anything already recommended, applies the lane's pick limits, adds the tracks, saves all state, and writes the report. A research subagent searches the web and hands its finds straight to the server. You choose the best tracks. The report goes to Discord through a separate no-model job.
 
-**Until you send the report in step 5, every message you write must be a tool call.** A message without a tool call ends the run on the spot, with nothing added and a broken message sent. If you want to think out loud, do it in the same message as the next tool call.
+**Until your one-line reply in step 5, every message you write must be a tool call.** A message without a tool call ends the run on the spot, with nothing added and a broken message sent. If you want to think out loud, do it in the same message as the next tool call.
 
 ## Tools
 - spotify-discovery MCP tools: `discovery_begin`, `discovery_review`, `discovery_finish` (yours), and `verify_tracks` (the subagent's). They may be listed with an `mcp__spotify_discovery__` prefix. `discovery_status` is only for debugging.
@@ -71,4 +71,4 @@ Choose the tracks that best fit the baseline. Then call `discovery_finish` with:
 If it says "Unknown refs", fix the list and call it again. On any other error, call it once more; it's safe to repeat.
 
 ### 5. Reply
-Your reply is the text after the `===== REPORT` line, exactly as given. Start with its first line. Add nothing before or after it: no summary, no notes about the steps. The report is never `[SILENT]`.
+Reply with one line: `Done: [the lane id]`. Nothing else: the report is posted to Discord by a separate job (`spotify-discovery-report`), straight from the server, so you never copy it. Don't repeat or summarize it.
