@@ -179,6 +179,8 @@ export interface RunFile {
     active_labels: string[];
   };
   finished?: { at: string; report: string };
+  /** Spotify API requests made for this run so far (begin, verify_tracks, finish). */
+  spotify_requests?: number;
 }
 
 /** Lane-specific state files live under lanes/. */

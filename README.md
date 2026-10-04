@@ -26,7 +26,7 @@ Each step is done either by **code** (this server) or by the **model**.
 | 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists, drops anything already recommended, and returns the lane brief and a list with refs (`K1`, `C1`) |
 | 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered, and hands its finds straight to `verify_tracks(lane, text)`. The server checks each one on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
 | 3 | `discovery_review(lane)` | code | Lists everything pickable in the run from the server's own records: verified web finds with their reasons, then the feed |
-| 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state, and returns the finished report |
+| 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state and the report, and returns a one-line summary of what was added |
 | 5 | Reply | model | One line, `Done: a-dnb`. The lane job itself delivers nothing (`deliver: local`) |
 | 6 | `spotify-discovery-mcp report` | code (a no-model cron job) | Prints each finished lane report once, plus a warning for a run that never finished. Hermes posts the output to Discord |
 
@@ -84,7 +84,7 @@ With `max_core_picks: 2`, only the first 2 of those (in the model's order) are k
 The feed is fetched by date ("released since this lane's last run"), but **the candidates themselves are kept in a pool, which isn't date-based**. Unpicked candidates come back on later runs, marked with how often they've been passed over, until one of these happens:
 
 - they're picked,
-- the model rejects them outright,
+- the model rejects them outright (at most 3 per run, so a model that rejects everything it didn't pick can't empty the pool),
 - they've been passed over `carry_runs` times,
 - they're older than `max_age_days`.
 

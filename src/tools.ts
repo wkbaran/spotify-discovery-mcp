@@ -109,24 +109,30 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       title: "Finish a lane run",
       description:
         "Step 4. Give your picks as refs (K, C or W), best first. The server applies the lane's limits (dropping from the end of your list), adds the tracks to today's playlist, " +
-        "saves all state, and returns the report for the record. Then reply with one line, \"Done: \" and the lane id: a separate job delivers the report. Safe to repeat: a second call changes nothing.",
+        "saves all state, and returns what was added. Then reply with one line, \"Done: \" and the lane id: a separate job posts the report. Safe to repeat: a second call changes nothing.",
       inputSchema: {
         lane,
         picks: lenient(z.array(z.string()).max(30)).default([]).describe("Refs, best first, e.g. [\"W2\", \"K1\", \"W5\"]."),
         // Weaker models often send one sentence here instead of an object. Accept it and drop it
         // (W picks carry their own reasons) rather than fail validation and cost a turn.
+        // The schema itself allows a string: Hermes validates arguments against it before calling,
+        // so a schema that only allows an object rejected the sentence before the server saw it.
         why: z
-          .preprocess((v) => {
+          .union([z.record(z.string(), z.string()), z.string()])
+          .optional()
+          .transform((v) => {
             if (typeof v !== "string") return v;
             try {
               const parsed = JSON.parse(v);
-              return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
+              return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, string>) : undefined;
             } catch {
               return undefined;
             }
-          }, z.record(z.string(), z.string()).optional())
+          })
           .describe('Optional short reasons for K/C picks, quoted or attributed to a text source: {"K1": "Critical: \'acid-tipped breakbeats\'"}. W picks already have theirs.'),
-        reject: lenient(z.array(z.string())).default([]).describe("Refs that don't fit this lane at all; they won't be offered again."),
+        reject: lenient(z.array(z.string()))
+          .default([])
+          .describe("At most 3 refs that are clearly the wrong genre for this lane; they're never offered again. Don't list refs just because you didn't pick them: unpicked refs carry over by themselves."),
         thin: z.boolean().default(false).describe("True if the research came back limited."),
         dry_run: z.boolean().default(false).describe("Show the report without adding or saving anything."),
       },

@@ -26,6 +26,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
   const lane = getLane(lanes, laneId);
   const run = await openRun(ctx.dir, lane.id);
   if (run.finished) return `Lane ${lane.id}'s latest run is already finished. Call discovery_begin to start a new one.`;
+  const requestsAtStart = ctx.client.requests;
 
   const parsed = input.text ? parseCandidatesText(input.text) : { candidates: [], labels: [] as FoundLabel[] };
   const candidates = [...(input.candidates ?? []), ...parsed.candidates].slice(0, MAX_CANDIDATES);
@@ -91,6 +92,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
     out.push(item);
   }
   run.labels_found.push(...parsed.labels);
+  run.spotify_requests = (run.spotify_requests ?? 0) + ctx.client.requests - requestsAtStart;
   await runStore(ctx.dir).write(run.id, run);
   const extra = parsed.labels.length ? [`Labels noted for this lane: ${parsed.labels.map((l) => l.name).join(", ")}`] : [];
   return renderVerifyLines(out, extra);
@@ -101,7 +103,7 @@ export async function discoveryReview(dir: string, laneId: string): Promise<stri
   const lanes = await loadLanes(dir);
   const lane = getLane(lanes, laneId);
   const run = await openRun(dir, lane.id);
-  if (run.finished) return `Lane ${lane.id}'s latest run is already finished. Its report:\n${REPORT_MARKER}\n${run.finished.report}`;
+  if (run.finished) return `Lane ${lane.id}'s latest run is already finished; the report job posts its report. Reply with one line: Done: ${lane.id}`;
   const web = run.order.web.map((r) => run.items[r]!);
   return renderReview(run, lane, web);
 }
@@ -115,12 +117,16 @@ export interface FinishArgs {
   dry_run?: boolean;
 }
 
+/** Most refs one run may reject for good. */
+export const MAX_REJECTS = 3;
+
 /** discovery_finish: apply the rules, add to the playlist, save everything, return the report. */
 export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs): Promise<{ ok: boolean; text: string }> {
   const lanes = await loadLanes(ctx.dir);
   const lane = getLane(lanes, laneId);
   const run = await openRun(ctx.dir, lane.id);
-  if (run.finished) return { ok: true, text: `This run was already finished; nothing changed. Reply with one line: Done: ${run.lane}\n${REPORT_MARKER}\n${run.finished.report}` };
+  const requestsAtStart = ctx.client.requests;
+  if (run.finished) return { ok: true, text: `This run was already finished; nothing changed. Reply with one line: Done: ${run.lane}` };
 
   // Refs: a multi-track release ref means its first track.
   const notes: string[] = [];
@@ -156,7 +162,14 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
     const ref = cleanRef(k);
     if (ref && v) why[ref] = v;
   }
-  const rejected = resolveRefs(args.reject ?? [], lookup).found.map((f) => f.item);
+  // Rejections are permanent, and weaker models reject everything they didn't pick, which would
+  // empty the carry-over pool. Keep the first few; the rest carry over like any unpicked ref.
+  const pickedKeys = new Set(kept.map((i) => i.key));
+  const allRejected = resolveRefs(args.reject ?? [], lookup).found.map((f) => f.item).filter((i) => !pickedKeys.has(i.key));
+  const rejected = allRejected.slice(0, MAX_REJECTS);
+  if (allRejected.length > MAX_REJECTS) {
+    notes.push(`Kept the first ${MAX_REJECTS} rejections; ${allRejected.slice(MAX_REJECTS).map((i) => i.ref).join(", ")} carry over instead. Reject only refs that are clearly the wrong genre for this lane.`);
+  }
   const webItems = run.order.web.map((r) => run.items[r]!);
   const dups = webItems.filter((i) => i.status === "dup");
   const pending = webItems.filter((i) => i.status === "pending");
@@ -208,9 +221,19 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
     researchThin: !!args.thin,
   });
   run.finished = { at: isoSeconds(now), report };
+  run.spotify_requests = (run.spotify_requests ?? 0) + ctx.client.requests - requestsAtStart;
   await runStore(ctx.dir).write(run.id, run);
-  const head = [`Saved. Added ${playlistResult.added.length} track(s) to ${run.playlist.name}.`, ...notes, ...labelOutcome.warnings, `Reply with one line: Done: ${run.lane}`].join("\n");
-  return { ok: true, text: `${head}\n${REPORT_MARKER}\n${report}` };
+  // The report job delivers the report from the run file. Leaving it out of the result
+  // gives the model nothing to copy into its reply.
+  const added = playlistResult.added.map((i) => `${i.artist} — ${i.title}`);
+  const lines = [
+    `Saved. Added ${added.length} track(s) to ${run.playlist.name}${added.length ? `: ${added.join("; ")}` : ""}.`,
+    ...(playlistResult.already.length ? [`Already in the playlist: ${playlistResult.already.map((i) => `${i.artist} — ${i.title}`).join("; ")}.`] : []),
+    ...notes,
+    ...labelOutcome.warnings,
+    `The report job posts the full report. Reply with one line: Done: ${run.lane}`,
+  ];
+  return { ok: true, text: lines.join("\n") };
 }
 
 interface LaneChange {

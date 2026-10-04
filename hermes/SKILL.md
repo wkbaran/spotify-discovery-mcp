@@ -1,7 +1,7 @@
 ---
 name: spotify-discovery
 description: Add one genre lane's tracks to today's Spotify discovery playlist. The spotify-discovery MCP server fetches, verifies, dedups, adds and saves; you research and judge.
-version: 1.3.0
+version: 1.4.0
 platforms: [linux]
 metadata:
   hermes:
@@ -30,6 +30,7 @@ The server does everything that isn't judgment. It creates or finds today's play
 ### 1. Begin
 Call `discovery_begin` with `lane` set to the lane id from the job prompt.
 - If it fails with "Spotify login needed", reply only: "🎧 Spotify lane [the lane id] skipped — the spotify-discovery-mcp login has expired. Run spotify-discovery-mcp login and copy auth.json to the Hermes host." Then stop.
+- If it fails with "Spotify rate limit", reply only: "🎧 Spotify lane [the lane id] skipped — [the error's first sentence]". Then stop; don't retry.
 - If it fails for another reason, call it once more. If that fails too, reply only: "🎧 Spotify lane [the lane id] failed: [the error]". Then stop.
 
 The result is the lane brief (name, baseline, notes, pick limits) and the tracks from the lane's known labels and artists, with refs. It ends with the covered labels and artists. Go straight on to step 2.
@@ -46,7 +47,9 @@ Call `delegate_task` with `tasks` as a list holding exactly one task. Its goal i
 > Notes: [the Research note and Exclude lines, or none]
 > Covered labels and artists, search elsewhere: [the two Covered lines]
 >
-> Search label pages, Bandcamp, SoundCloud, Beatport, blogs, Reddit and artist pages with web_search and web_extract. Start discovery searches with !music, for example !music neurofunk new releases 2026, and fall back to a plain query when that finds nothing. Prefer releases from the last 6 to 12 months and smaller artists. Use at most 25 searches.
+> Search label pages, Bandcamp, SoundCloud, Beatport, blogs, Reddit and artist pages with web_search and web_extract. Start discovery searches with !music, for example !music neurofunk new releases 2026, and fall back to a plain query when that finds nothing. Prefer releases from the last 6 to 12 months and smaller artists.
+>
+> Budget: call verify_tracks after every 5 searches with whatever you have so far. After 20 searches, stop searching and reply DONE, however many tracks you have.
 >
 > Base every reason on text from a label, Bandcamp or SoundCloud description, artist statement or reputable blog, and say whose text it is. Never write sounds like, on listen or has a vibe.
 >
@@ -57,9 +60,11 @@ Call `delegate_task` with `tasks` as a list holding exactly one task. Its goal i
 >
 > Use only verify_tracks from the spotify-discovery tools. Never call discovery_begin, discovery_review, discovery_finish or discovery_status: choosing the tracks is not your job, and calling them ends the lane early.
 >
+> If verify_tracks says "Spotify rate limit", stop at once and reply: DONE 0, rate limited.
+>
 > When you're done, reply with one line only: DONE, then how many tracks verify_tracks marked with a check mark.
 
-If the subagent errors, times out, or says DONE with fewer than 3, retry once with the same goal plus: Try different searches from last time. Don't research yourself.
+If the subagent says it was rate limited, go straight to step 3 with what it found. If it errors, times out, or says DONE with fewer than 3, retry once with the same goal plus: Try different searches from last time. Don't research yourself.
 
 ### 3. Review
 Call `discovery_review` with `lane`. It lists everything you can pick, from the server's own records: verified web finds (W refs, with their reasons), then the known-source tracks (K and C refs), and the pick limits. A `Beatport:` or `SoundCloud:` line gives genre and tempo; "⚠ genre outside this lane" means that genre doesn't fit, so pick it only if the brief clearly supports it.
@@ -68,9 +73,11 @@ Call `discovery_review` with `lane`. It lists everything you can pick, from the 
 Choose the tracks that best fit the baseline. Then call `discovery_finish` with:
 - `lane`;
 - `picks`: the refs, **best first**. The server keeps your order and drops from the end to meet the lane's limits. Fewer than the target is fine: don't pad with weak fits.
-- optionally `reject` (K or C refs that clearly don't belong in this lane), `why` (a short attributed reason for a K or C pick), and `thin: true` if the research came back limited.
+- optionally `reject`: at most 3 K or C refs that are clearly the wrong genre for this lane. They're never offered again. **Don't reject a ref just because you didn't pick it**: unpicked refs carry over to later runs by themselves, and that's how good tracks get a second chance.
+- optionally `why`, only for a K or C pick you have a quoted or attributed reason for, as an object: `{"K2": "Label: 'quoted text'"}`. Leave it out otherwise; W picks already have their reasons.
+- optionally `thin: true` if the research came back limited.
 
-If it says "Unknown refs", fix the list and call it again. On any other error, call it once more; it's safe to repeat.
+If it says "Unknown refs", fix the list and call it again. If it says "Spotify rate limit", reply only: "🎧 Spotify lane [the lane id] not saved — [the error's first sentence]", and stop. On any other error, call it once more; it's safe to repeat.
 
 ### 5. Reply
-Reply with one line: `Done: [the lane id]`. Nothing else: the report is posted to Discord by a separate job (`spotify-discovery-report`), straight from the server, so you never copy it. Don't repeat or summarize it.
+`discovery_finish` answers with a short list of what was added. Reply with one line: `Done: [the lane id]`. Nothing else: the full report is posted to Discord by a separate job (`spotify-discovery-report`), straight from the server. Don't list the tracks, summarize, or add notes.

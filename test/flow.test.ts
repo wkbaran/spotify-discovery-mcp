@@ -1,10 +1,9 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REPORT_MARKER } from "../src/discovery/render.js";
 import type { History, LaneState } from "../src/discovery/state.js";
 import { createServer } from "../src/server.js";
 import { SpotifyClient } from "../src/spotify/client.js";
@@ -44,6 +43,12 @@ async function call(client: Client, name: string, args: Record<string, unknown>)
 }
 
 const readJson = async <T>(name: string) => JSON.parse(await readFile(join(dir, name), "utf8")) as T;
+
+/** The report of a lane's latest finished run, as the report job reads it. */
+async function lastReport(lane: string): Promise<string> {
+  const ids = (await readdir(join(dir, "runs"))).filter((f) => f.startsWith(`${lane}-`)).sort();
+  return (await readJson<{ finished: { report: string } }>(`runs/${ids.at(-1)}`)).finished.report;
+}
 
 beforeEach(async () => {
   process.env.SPOTIFY_DISCOVERY_METADATA = "off";
@@ -112,7 +117,13 @@ describe("a lane run", () => {
     const finish = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1", chatter, neon, omneum, "W2"], why: { [chatter]: "Critical: 'acid-tipped breakbeats'" } });
     expect(finish.isError).toBe(false);
     expect(finish.text).toContain("W2 can't be added (pending");
-    const report = finish.text.split(REPORT_MARKER + "\n")[1]!;
+    expect(finish.text).toMatch(/^Saved\. Added 4 track\(s\) to hermes20261002: Skrimor — Kraken; Sully — Chatter; /);
+    expect(finish.text).toMatch(/Reply with one line: Done: a-dnb$/);
+    expect(finish.text).not.toContain("**Lane:**");
+    const runId = (await readdir(join(dir, "runs"))).find((f) => f.startsWith("a-dnb-"))!.replace(/\.json$/, "");
+    const run = await readJson<{ finished: { report: string }; spotify_requests: number }>(`runs/${runId}.json`);
+    expect(run.spotify_requests).toBeGreaterThan(5);
+    const report = run.finished.report;
     expect(report).toMatch(/^\*\*Lane:\*\* Neurofunk/);
     expect(report).toContain("**Added (4):**");
     expect(report).toContain("**Sully — Chatter** (Critical Music, 2026-09-26). Critical: 'acid-tipped breakbeats'");
@@ -153,7 +164,7 @@ describe("a lane run", () => {
     expect(all.length).toBeGreaterThanOrEqual(4);
     await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: all });
-    expect(r.text).toMatch(/Dropped by limits: .*\(feed limit of 3\)/);
+    expect(await lastReport("a-dnb")).toMatch(/Dropped by limits: .*\(feed limit of 3\)/);
     expect(spotify.playlistUris("pl1")).toHaveLength(3);
   });
 
@@ -162,7 +173,8 @@ describe("a lane run", () => {
     const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
     const group = begin.text.match(/(K\d+) {2}Flux \/ Chatter/)![1]!;
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: [group, `${group}.1`] });
-    expect(r.text).toContain("**Added (1):**");
+    expect(r.text).toMatch(/^Saved\. Added 1 track\(s\)/);
+    expect(await lastReport("a-dnb")).toContain("**Added (1):**");
     expect(spotify.playlistUris("pl1")).toHaveLength(1);
   });
 
@@ -201,9 +213,22 @@ describe("a lane run", () => {
       call(c2, "discovery_finish", { lane: "b-ukg", picks: [ref(b.text)] }),
     ]);
     expect(spotify.playlistUris("pl1")).toHaveLength(1);
-    expect([fa.text, fb.text].filter((t) => t.includes("*was already in the playlist*"))).toHaveLength(1);
+    expect([fa.text, fb.text].filter((t) => t.includes("Already in the playlist: Sully — Chatter"))).toHaveLength(1);
+    expect([await lastReport("a-dnb"), await lastReport("b-ukg")].filter((t) => t.includes("*was already in the playlist*"))).toHaveLength(1);
     const history = await readJson<History>("history.json");
     expect(history.tracks.filter((t) => t.title === "Chatter")).toHaveLength(1);
+  });
+
+  it("keeps at most 3 rejections; the rest carry over", async () => {
+    spotify.addRelease({ artist: "Phase Two", title: "Grid", tracks: ["Grid", "Lattice"], label: "Eatbrain", date: "2026-09-29" });
+    const client = await connect();
+    const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
+    const all = [...begin.text.matchAll(/^\s*(K\d+\.\d+|K\d+) {2}(?!.* · \d+ tracks:)/gm)].map((m) => m[1]!);
+    expect(all.length).toBeGreaterThanOrEqual(5);
+    const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: [all[0]], reject: all.slice(1) });
+    expect(r.text).toContain(`Kept the first 3 rejections; ${all.slice(4).join(", ")} carry over instead.`);
+    const state = await readJson<LaneState>("lanes/a-dnb.json");
+    expect(Object.values(state.closed).filter((c) => c.status === "rejected")).toHaveLength(3);
   });
 
   it("credits a label found and picked in the same run", async () => {
@@ -211,7 +236,7 @@ describe("a lane run", () => {
     await call(client, "discovery_begin", { lane: "a-dnb" });
     await call(client, "verify_tracks", { lane: "a-dnb", text: `${RESEARCH}\nLABEL | Hanzom Music | https://example.com/hanzom | Neurofunk label` });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
-    expect(r.text).toContain("New labels for this lane: DnB Doctor, Hanzom Music");
+    expect(await lastReport("a-dnb")).toContain("New labels for this lane: DnB Doctor, Hanzom Music");
     expect(r.text).toContain("Reply with one line: Done: a-dnb");
     const state = await readJson<LaneState>("lanes/a-dnb.json");
     expect(state.labels[Object.keys(state.labels).find((k) => state.labels[k]!.name === "Hanzom Music")!]).toMatchObject({ origin: "promoted", picks: 1 });

@@ -22,7 +22,8 @@ const MAX_TRACKS_PER_RELEASE = 8;
 const MAX_CARRIED = 12;
 const MAX_PENDING_CHECKS = 10;
 const MAX_META_LOOKUPS = 20;
-const FIRST_RUN_DAYS = 14;
+/** A first run looks back this far: just inside what `tag:new` search covers, so it stays the cheap search. */
+const FIRST_RUN_DAYS = 13;
 
 /** Today's playlist: the one recorded for today, or a new one, created under the days.json lock. */
 export async function todaysPlaylist(ctx: Ctx, day: string, template: { name: string; description: string; public: boolean }, now: Date): Promise<Day> {
@@ -40,6 +41,7 @@ export async function todaysPlaylist(ctx: Ctx, day: string, template: { name: st
 
 export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: RunFile; view: string }> {
   const now = ctx.now?.() ?? new Date();
+  const requestsAtStart = ctx.client.requests;
   const lanes = await loadLanes(ctx.dir);
   const lane = getLane(lanes, laneId);
   const day = localDate(now, lanes.timezone);
@@ -175,6 +177,7 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
     notes,
     labels_found: [],
     effects,
+    spotify_requests: ctx.client.requests - requestsAtStart,
   };
   await runs.write(id, run);
   await runs.prune(lane.id);

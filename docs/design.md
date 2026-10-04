@@ -61,7 +61,7 @@ Read-only. Lists everything pickable in the current run from the run file: verif
 
 - `picks`: refs, best first.
 - `why`: notes for picked K or C items that don't have a sourced reason (`{"K2": "Critical: 'acid-tipped breakbeats…'"}`). W items already have theirs.
-- `reject`: refs the model saw and judged wrong for this lane; they don't carry over.
+- `reject`: refs the model judged clearly wrong for this lane; they don't carry over. Only the first 3 count, because a rejection is permanent and Qwen tended to reject everything it didn't pick.
 - New labels come from the research reply's `LABEL |` lines, which `verify_tracks` already recorded.
 - `thin`: whether the research came back limited.
 
@@ -71,7 +71,7 @@ Steps, in order:
 2. Apply the pick rules from the README: keep preference order, drop from the end to meet `target`, `max_feed_picks` (lifted if the run has no ✓ W items), `max_core_picks` and `min_web_picks`.
 3. Under the lock: re-read the live playlist, add only tracks not already in it (compared by URI and by key), then update `days.json`.
 4. Update `history.json`, the lane's pool (picks, rejections, passes, expiry), its labels and artists, and its `last_run` (server clock at `begin`, never moving backwards).
-5. Return the report.
+5. Save the report in the run file and return a short summary: what was added, then "Reply with one line: Done: <lane>". The report job posts the report, so the model never sees it to copy.
 
 Calling it again on a finished run re-renders the same report and writes nothing.
 

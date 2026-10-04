@@ -86,7 +86,7 @@ Baseline: Dark, technical drum & bass: neurofunk, techstep and halftime.
 Research note: Releases are sparse; two great fits beat six average ones.
 Pick up to 6 (aim for 3–6; fewer is fine if nothing else fits). At most 3 from K/C refs unless no web find verifies. At most 2 by core artists.
 
-New from known labels and artists (since 2026-09-22):
+New from known labels and artists (since 2026-09-23):
 K1  Kestrel — Hollow Ground · single, 2026-10-01 · Ferrous Records [core artist]
 K2  Pressure Front (single, 2026-09-30, Obsidian Audio) · 2 tracks:
     K2.1  Mara Voss — Pressure Front · Obsidian Audio
@@ -103,7 +103,7 @@ Covered artists: Kestrel
 Things to notice:
 
 - **A multi-track release is one group with numbered tracks** (`K2`, `K2.1`, `K2.2`). The model can pick the group or a track; picking `K2` means its first track.
-- **The 2024 release on Obsidian Audio isn't listed.** It's older than the run's start date ("since 2026-09-22": a first run looks back two weeks).
+- **The 2024 release on Obsidian Audio isn't listed.** It's older than the run's start date ("since 2026-09-23": a first run looks back 13 days, which keeps it to the cheap `tag:new` search).
 - **`[core artist]`** marks an artist from `taste_profile.json`. Those count toward `max_core_picks`.
 - **The covered lists** tell the research where *not* to look. The skill copies them into the subagent's goal.
 
@@ -202,7 +202,7 @@ The model gives its picks as refs, best first. The server applies the lane's lim
 | `lane` | string | The lane id |
 | `picks` | ref[] | K, C or W refs, best first. Up to 30 |
 | `why` | `{ref: reason}` | Optional reasons for K or C picks, quoted or attributed to a text source. W picks already have theirs. A plain sentence is accepted and ignored |
-| `reject` | ref[] | Refs that don't fit the lane at all. They won't be offered again |
+| `reject` | ref[] | Refs that are clearly the wrong genre for this lane. They're never offered again, so only the first 3 count; the rest carry over like any unpicked ref |
 | `thin` | boolean | The research came back limited |
 | `dry_run` | boolean | Show the report without adding or saving anything |
 
@@ -220,37 +220,24 @@ The example picks six. K3.3 is rejected, so it won't carry over:
 }
 ```
 
-Output. The result tells the model its reply, "Done: a-dnb". The report below the marker is for the record; the report job in step 5 delivers it:
+Output. It lists what was added and tells the model its reply, "Done: a-dnb". The full report isn't in it, so the model has nothing to copy; the report job in step 5 posts it from the run file:
 
 <!-- generated: discovery_finish -->
 ```text
-Saved. Added 5 track(s) to hermes20261006.
-Reply with one line: Done: a-dnb
-===== REPORT (for the record: the report job delivers it, so don't repeat it) =====
-**Lane:** Neurofunk and techstep
-**Playlist:** hermes20261006 — <https://open.spotify.com/playlist/pl1>
-
-**Added (5):**
-- **Lumen Drift — Glass Engine** (Sublevel Recordings, 2026-09-29). Sublevel Recordings: 'clinical neurofunk built from field recordings' <https://example.com/sublevel/glass-engine>
-- **Vanta — Signal Loss** (Sublevel Recordings, 2026-10-02). Sublevel Recordings: 'a slow-burning halftime roller' <https://example.com/sublevel/signal-loss> · *core artist*
-- **Mara Voss — Pressure Front** (Obsidian Audio, 2026-09-30). Obsidian Audio: 'a rolling techstep workout'
-- **Kestrel — Hollow Ground** (Ferrous Records, 2026-10-01) · *core artist*
-- **Dekker — Night Shift** (Ironclad Music, 2026-09-27)
-
-Dropped by limits: Dekker — Rivet (feed limit of 3)
-Already recommended: Hollow Point — Static Bloom
-Not on Spotify yet (re-checking each run): Ash Meridian — Fever Line <https://example.com/ironclad/fever-line>
-New labels for this lane: Sublevel Recordings
+Saved. Added 5 track(s) to hermes20261006: Lumen Drift — Glass Engine; Vanta — Signal Loss; Mara Voss — Pressure Front; Kestrel — Hollow Ground; Dekker — Night Shift.
+The report job posts the full report. Reply with one line: Done: a-dnb
 ```
 
 What happened:
 
-- **K3.2 was dropped by the feed limit.** The run has verified web finds, so at most 3 picks can come from K and C refs. K2.1, K1 and K3.1 used them up.
+- **K3.2 was dropped by the feed limit** (the report in step 5 says so). The run has verified web finds, so at most 3 picks can come from K and C refs. K2.1, K1 and K3.1 used them up.
 - **The core-artist limit held:** Vanta (W1) and Kestrel (K1) are the lane's 2.
 - **Saved:** the five tracks went into the playlist and `history.json`. The picked artists that weren't seeds (Lumen Drift, Vanta, Mara Voss, Dekker) and Sublevel Recordings, from the `LABEL` line, went into `lanes/a-dnb.json`. Sublevel is already *promoted*, because two of the picks came from it; a found label nobody picks is dropped after `quiet_runs` quiet runs. All of this means the next run's feed covers them. The unpicked K tracks (Undertow, and Rivet, which the limit dropped) stay in the lane's pool and come back as `C` refs for up to `carry_runs` runs. Fever Line stays pending. Step 6 shows the saved state.
 - **`last_run`** is when `discovery_begin` started (the server's clock), so releases that come out during the run turn up next time.
 
-Calling `discovery_finish` again for the same run changes nothing and returns the same report.
+Calling `discovery_finish` again for the same run changes nothing.
+
+Each run file also counts the Spotify requests the run made (`spotify_requests`), to show what uses the app's quota.
 
 ## 5. Delivering the report
 

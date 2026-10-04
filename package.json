@@ -1,6 +1,6 @@
 {
   "name": "spotify-discovery-mcp",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "MCP server that runs a Spotify discovery playlist for a scheduled agent: feeds, verification, dedup and state in code, judgment in the model",
   "license": "MIT",
   "author": "Bill Baran",
