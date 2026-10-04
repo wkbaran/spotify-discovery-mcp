@@ -1,0 +1,39 @@
+{
+  "name": "spotify-discovery-mcp",
+  "version": "0.0.1",
+  "description": "MCP server that runs a Spotify discovery playlist for a scheduled agent: feeds, verification, dedup and state in code, judgment in the model",
+  "license": "MIT",
+  "author": "Bill Baran",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wkbaran/spotify-discovery-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "spotify",
+    "model-context-protocol",
+    "hermes"
+  ],
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "job-ledger": "file:../job-ledger",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
