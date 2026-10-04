@@ -158,7 +158,7 @@ The reports reach Discord through a no-model job instead, because copying a long
 | `SPOTIFY_DISCOVERY_DIR` | (required) | The data directory |
 | `SPOTIFY_DISCOVERY_AUTH` | `$SPOTIFY_DISCOVERY_DIR/auth.json` | The token file |
 | `SPOTIFY_DISCOVERY_TZ` | `lanes.json`'s `timezone` | Which day "today" is |
-| `SPOTIFY_DISCOVERY_METADATA` | `beatport,soundcloud` | Where to look up genre; `off` for nowhere |
+| `SPOTIFY_DISCOVERY_METADATA` | `off` | Where to look up genre: `beatport`, `soundcloud` or both. Off by default because both are scraped pages, not open APIs, and their terms don't allow it. If you turn it on, keep it light, and let a blocked lookup fail |
 
 ## Tools
 
