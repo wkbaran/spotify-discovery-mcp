@@ -144,7 +144,7 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       inputSchema: { lane: z.string().optional().describe("Just this lane.") },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    (args) => run(async () => text(await discoveryStatus(dir, args.lane))),
+    (args) => run(async () => text(await discoveryStatus(dir, args.lane, (await ctx()).now?.()))),
   );
 
   server.registerTool(

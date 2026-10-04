@@ -2,7 +2,7 @@
 
 An MCP server that runs a Spotify discovery playlist for a scheduled agent, so the agent's model only has to judge music.
 
-**Status: 0.1.0, built and tested, not yet deployed.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
+**Status: running on Hermes since 2026-10-03.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
 
 ## Why
 
@@ -32,7 +32,7 @@ Each step is done either by **code** (this server) or by the **model**.
 
 The research never passes through the main model. On 2026-10-03 the first live run had Qwen copy the subagent's reply into `verify_tracks`; it mangled the JSON escaping four times, and the run ran out of road before finishing. Now the subagent calls `verify_tracks` itself and returns only "DONE".
 
-That's 5 turns for the main model, down from 20–57. The model never sees the history, the playlist file or other lanes, and has no file tools. [docs/design.md](docs/design.md) has the details.
+That's 5 turns for the main model, down from 20–57. The model never sees the history, the playlist file or other lanes, and has no file tools. [docs/design.md](docs/design.md) has the details, and [docs/discovery-tools.md](docs/discovery-tools.md) follows one run with a diagram, each tool's arguments and real output.
 
 ## Where picks come from, and how they're mixed
 

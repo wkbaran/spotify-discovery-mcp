@@ -322,11 +322,11 @@ function trim<T>(rec: Record<string, T>, max: number, age: (t: T) => string): vo
 }
 
 /** discovery_status: state at a glance. */
-export async function discoveryStatus(dir: string, laneId?: string): Promise<string> {
+export async function discoveryStatus(dir: string, laneId?: string, now = new Date()): Promise<string> {
   const lanes = await loadLanes(dir);
   const [days, history, core] = await Promise.all([readDays(dir), readHistory(dir), loadCoreArtists(dir)]);
   const L: string[] = [];
-  const today = localDate(new Date(), lanes.timezone);
+  const today = localDate(now, lanes.timezone);
   const d = days.days[today];
   L.push(d ? `Today (${today}): ${d.name}, ${d.tracks.length} tracks <${d.url}>` : `Today (${today}): no playlist yet.`);
   L.push(`History: ${history.tracks.length} tracks recommended.`);
