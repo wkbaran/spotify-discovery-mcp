@@ -19,7 +19,7 @@ export function createServer(opts: { dir?: string; fetchImpl?: FetchLike; pageFe
     {
       instructions: dir
         ? "Runs one genre lane of a Spotify discovery playlist. A run is: discovery_begin(lane); web research by a subagent, which calls verify_tracks(lane, text) itself; " +
-          "discovery_review(lane); then discovery_finish(lane, picks = refs best first). Reply with exactly the text after discovery_finish's ===== REPORT line. You never handle URIs, files or the playlist yourself."
+          "discovery_review(lane); then discovery_finish(lane, picks = refs best first). Then reply with one line, \"Done: \" and the lane id; a separate job delivers the report, so never copy it. You never handle URIs, files or the playlist yourself."
         : "SPOTIFY_DISCOVERY_DIR isn't set, so the discovery tools are off.",
     },
   );

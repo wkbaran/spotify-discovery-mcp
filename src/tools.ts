@@ -106,7 +106,7 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       title: "Finish a lane run",
       description:
         "Step 4. Give your picks as refs (K, C or W), best first. The server applies the lane's limits (dropping from the end of your list), adds the tracks to today's playlist, " +
-        "saves all state, and returns the report. Reply with exactly the text after the ===== REPORT line. Safe to repeat: a second call changes nothing.",
+        "saves all state, and returns the report for the record. Then reply with one line, \"Done: \" and the lane id: a separate job delivers the report. Safe to repeat: a second call changes nothing.",
       inputSchema: {
         lane,
         picks: lenient(z.array(z.string()).max(30)).default([]).describe("Refs, best first, e.g. [\"W2\", \"K1\", \"W5\"]."),
