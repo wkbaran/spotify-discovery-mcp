@@ -3,8 +3,8 @@ import { metaLine } from "../metadata/lookup.js";
 import type { Lane } from "./lanes.js";
 import type { RunFile, RunItem } from "./state.js";
 
-/** The line marking where the reply starts in discovery_finish's result. */
-export const REPORT_MARKER = "===== REPORT (reply with everything below this line, unchanged) =====";
+/** The line marking where the report starts in discovery_finish's result. The report job delivers it; the model doesn't. */
+export const REPORT_MARKER = "===== REPORT (for the record: the report job delivers it, so don't repeat it) =====";
 
 const MAX_CHARS = 38_000;
 

@@ -220,12 +220,13 @@ The example picks six. K3.3 is rejected, so it won't carry over:
 }
 ```
 
-Output. The lane job doesn't reply with this report; it replies only "Done: a-dnb", and the report job in step 5 delivers it:
+Output. The result tells the model its reply, "Done: a-dnb". The report below the marker is for the record; the report job in step 5 delivers it:
 
 <!-- generated: discovery_finish -->
 ```text
 Saved. Added 5 track(s) to hermes20261006.
-===== REPORT (reply with everything below this line, unchanged) =====
+Reply with one line: Done: a-dnb
+===== REPORT (for the record: the report job delivers it, so don't repeat it) =====
 **Lane:** Neurofunk and techstep
 **Playlist:** hermes20261006 — <https://open.spotify.com/playlist/pl1>
 
@@ -246,7 +247,7 @@ What happened:
 
 - **K3.2 was dropped by the feed limit.** The run has verified web finds, so at most 3 picks can come from K and C refs. K2.1, K1 and K3.1 used them up.
 - **The core-artist limit held:** Vanta (W1) and Kestrel (K1) are the lane's 2.
-- **Saved:** the five tracks went into the playlist and `history.json`. The picked artists that weren't seeds (Lumen Drift, Vanta, Mara Voss, Dekker) and Sublevel Recordings, from the `LABEL` line, went into `lanes/a-dnb.json`, so the next run's feed covers them. The unpicked K tracks (Undertow, and Rivet, which the limit dropped) stay in the lane's pool and come back as `C` refs for up to `carry_runs` runs. Fever Line stays pending. Step 6 shows the saved state.
+- **Saved:** the five tracks went into the playlist and `history.json`. The picked artists that weren't seeds (Lumen Drift, Vanta, Mara Voss, Dekker) and Sublevel Recordings, from the `LABEL` line, went into `lanes/a-dnb.json`. Sublevel is already *promoted*, because two of the picks came from it; a found label nobody picks is dropped after `quiet_runs` quiet runs. All of this means the next run's feed covers them. The unpicked K tracks (Undertow, and Rivet, which the limit dropped) stay in the lane's pool and come back as `C` refs for up to `carry_runs` runs. Fever Line stays pending. Step 6 shows the saved state.
 - **`last_run`** is when `discovery_begin` started (the server's clock), so releases that come out during the run turn up next time.
 
 Calling `discovery_finish` again for the same run changes nothing and returns the same report.
@@ -295,7 +296,7 @@ History: 6 tracks recommended.
 a-dnb — Neurofunk and techstep
   last run: 2026-10-06T13:00:00Z · pool 2 · pending 1
   seed labels: Obsidian Audio, Ironclad Music
-  learned labels: Sublevel Recordings (found, 0 picks, quiet 0)
+  learned labels: Sublevel Recordings (promoted, 2 picks, quiet 0)
   learned artists: Lumen Drift, Vanta, Mara Voss, Dekker
   pending: Ash Meridian — Fever Line (since 2026-10-06)
 
