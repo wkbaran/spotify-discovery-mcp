@@ -180,3 +180,17 @@ describe("label matching for the feed", () => {
     expect(labelContains("Bergundy", "Bad Taste")).toBe(false);
   });
 });
+
+describe("research replies wrapped in JSON", () => {
+  it("reads pipe lines inside JSON strings and code fences", () => {
+    const reply = 'Here is the output:\n\n```json\n{\n  "labels": ["LABEL | NeuroPlague Music | https://www.beatport.com/label/neuroplague-music/178934 | DnB label"],\n  "tracks": [\n    "Current Value | What It Be | The Incubation, Vol. 1 | NeuroPlague Music | 2026-03-13 | NeuroPlague: \\"uncompromising neurofunk\\" | https://www.beatport.com/release/x/1"\n  ]\n}\n```';
+    const r = parseCandidatesText(reply);
+    expect(r.candidates).toEqual([{ artist: "Current Value", track: "What It Be", release: "The Incubation, Vol. 1", label: "NeuroPlague Music", released: "2026-03-13", why: 'NeuroPlague: "uncompromising neurofunk"', source_url: "https://www.beatport.com/release/x/1" }]);
+    expect(r.labels[0]!.name).toBe("NeuroPlague Music");
+  });
+
+  it("reads quoted lines with trailing commas when the JSON is broken", () => {
+    const r = parseCandidatesText('"tracks": [\n  "Skrimor | Kraken | Kraken EP | Hanzom Music | 2026-10-02 | Hanzom: assault | https://x.y/z",\n');
+    expect(r.candidates[0]).toMatchObject({ artist: "Skrimor", track: "Kraken", source_url: "https://x.y/z" });
+  });
+});

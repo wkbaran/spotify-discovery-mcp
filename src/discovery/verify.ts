@@ -35,8 +35,13 @@ const DATE_RE = /^\d{4}(?:-\d{2}(?:-\d{2})?)?$/;
 export function parseCandidatesText(text: string): { candidates: Candidate[]; labels: FoundLabel[] } {
   const candidates: Candidate[] = [];
   const labels: FoundLabel[] = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").replace(/\*\*/g, "").trim();
+  for (const raw of candidateLines(text)) {
+    const line = raw
+      .trim()
+      .replace(/^(?:[-*•]|\d+[.)])\s*/, "")
+      .replace(/\*\*/g, "")
+      .replace(/^["'`]+|["'`]+,?$/g, "")
+      .trim();
     if (!line.includes("|")) continue;
     const fields = line.split("|").map((f) => f.trim());
     if (/^labels?$/i.test(fields[0] ?? "")) {
@@ -62,6 +67,31 @@ export function parseCandidatesText(text: string): { candidates: Candidate[]; la
     });
   }
   return { candidates, labels };
+}
+
+/**
+ * The lines of a research reply. Models sometimes wrap the pipe lines in JSON
+ * (`{"tracks": ["a | b | …"]}`) or a code fence; the strings inside are what
+ * matter, so a JSON reply is flattened to its strings first.
+ */
+export function candidateLines(text: string): string[] {
+  const unfenced = text.replace(/```[a-z]*\n?/gi, "");
+  const strings: string[] = [];
+  const walk = (v: unknown) => {
+    if (typeof v === "string") strings.push(...v.split(/\r?\n/));
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  const start = unfenced.search(/[[{]/);
+  if (start >= 0) {
+    try {
+      walk(JSON.parse(unfenced.slice(start, Math.max(unfenced.lastIndexOf("}"), unfenced.lastIndexOf("]")) + 1)));
+      if (strings.some((l) => l.includes("|"))) return strings;
+    } catch {
+      // Not JSON; read it as lines.
+    }
+  }
+  return unfenced.split(/\r?\n/).map((l) => l.replace(/\\"/g, '"'));
 }
 
 const blank = (s: string | undefined) => (s && !/^(-|n\/?a|unknown|none|\?)$/i.test(s) ? s : undefined);

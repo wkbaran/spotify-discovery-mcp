@@ -18,8 +18,8 @@ export function createServer(opts: { dir?: string; fetchImpl?: FetchLike; pageFe
     { name: "spotify-discovery", version: VERSION },
     {
       instructions: dir
-        ? "Runs one genre lane of a Spotify discovery playlist. A run is: discovery_begin(lane), web research by a subagent, verify_tracks(lane, text = the research reply unchanged), " +
-          "then discovery_finish(lane, picks = refs best first). Reply with exactly the text after discovery_finish's ===== REPORT line. You never handle URIs, files or the playlist yourself."
+        ? "Runs one genre lane of a Spotify discovery playlist. A run is: discovery_begin(lane); web research by a subagent, which calls verify_tracks(lane, text) itself; " +
+          "discovery_review(lane); then discovery_finish(lane, picks = refs best first). Reply with exactly the text after discovery_finish's ===== REPORT line. You never handle URIs, files or the playlist yourself."
         : "SPOTIFY_DISCOVERY_DIR isn't set, so the discovery tools are off.",
     },
   );

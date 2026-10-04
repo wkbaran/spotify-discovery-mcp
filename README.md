@@ -23,14 +23,15 @@ Each step is done either by **code** (this server) or by the **model**.
 
 | # | Step | Who | What happens |
 |---|---|---|---|
-| 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists, drops anything already recommended, and returns a short list with refs (`K1`, `C1`) |
-| 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered |
-| 3 | `verify_tracks(lane, text)` | code | Reads the research reply as it is, checks each find on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
-| 4 | Judge | model | Picks the best fits by ref, in order of preference |
-| 5 | `discovery_finish(lane, picks, …)` | code | Applies the pick rules, adds tracks that aren't already in the playlist, saves all state, and returns the finished report |
-| 6 | Reply | model | Sends the report unchanged |
+| 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists, drops anything already recommended, and returns the lane brief and a list with refs (`K1`, `C1`) |
+| 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered, and hands its finds straight to `verify_tracks(lane, text)`. The server checks each one on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
+| 3 | `discovery_review(lane)` | code | Lists everything pickable in the run from the server's own records: verified web finds with their reasons, then the feed |
+| 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state, and returns the finished report |
+| 5 | Reply | model | Sends the report unchanged |
 
-That's about 6 turns for the main model, down from 20–57. The model never sees the history, the playlist file or other lanes, and has no file tools. [docs/design.md](docs/design.md) has the details.
+The research never passes through the main model. On 2026-10-03 the first live run had Qwen copy the subagent's reply into `verify_tracks`; it mangled the JSON escaping four times, and the run ran out of road before finishing. Now the subagent calls `verify_tracks` itself and returns only "DONE".
+
+That's 5 turns for the main model, down from 20–57. The model never sees the history, the playlist file or other lanes, and has no file tools. [docs/design.md](docs/design.md) has the details.
 
 ## Where picks come from, and how they're mixed
 
@@ -160,7 +161,8 @@ Install [hermes/SKILL.md](hermes/SKILL.md) as the `spotify-discovery` skill. The
 | Tool | What it does |
 |---|---|
 | `discovery_begin(lane)` | Today's playlist, the feed and carried-over candidates, with refs |
-| `verify_tracks(lane, text)` | Checks the research reply's tracks on Spotify; W refs |
+| `verify_tracks(lane, text)` | Called by the research subagent: checks its finds on Spotify; W refs |
+| `discovery_review(lane)` | Everything pickable in the current run |
 | `discovery_finish(lane, picks, …)` | Applies the rules, adds tracks, saves, returns the report |
 | `discovery_status(lane?)` | Read-only overview |
 | `mark_recommended(lane, tracks)` | Repair: add tracks to history |

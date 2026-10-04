@@ -3,7 +3,7 @@ import { fitsLane, beatportLookup, soundcloudLookup } from "../metadata/lookup.j
 import { addDays } from "./feed.js";
 import { labelKey, spotifyTrackKey, trackKey } from "./keys.js";
 import { getLane, loadCoreArtists, loadLanes, type Lane } from "./lanes.js";
-import { REPORT_MARKER, renderReport, renderVerifyLines } from "./render.js";
+import { REPORT_MARKER, renderReport, renderReview, renderVerifyLines } from "./render.js";
 import { applyPickRules } from "./rules.js";
 import { readDays, readHistory, readLaneState, runStore, Seen, updateDays, updateHistory, updateLaneState, type RunFile, type RunItem } from "./state.js";
 import { findOnSpotify, parseCandidatesText, type Candidate, type FoundLabel } from "./verify.js";
@@ -92,6 +92,16 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
   await runStore(ctx.dir).write(run.id, run);
   const extra = parsed.labels.length ? [`Labels noted for this lane: ${parsed.labels.map((l) => l.name).join(", ")}`] : [];
   return renderVerifyLines(out, extra);
+}
+
+/** discovery_review: everything pickable in the current run, from the server's copy. */
+export async function discoveryReview(dir: string, laneId: string): Promise<string> {
+  const lanes = await loadLanes(dir);
+  const lane = getLane(lanes, laneId);
+  const run = await openRun(dir, lane.id);
+  if (run.finished) return `Lane ${lane.id}'s latest run is already finished. Its report:\n${REPORT_MARKER}\n${run.finished.report}`;
+  const web = run.order.web.map((r) => run.items[r]!);
+  return renderReview(run, lane, web);
 }
 
 export interface FinishArgs {

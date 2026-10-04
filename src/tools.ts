@@ -3,7 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AuthError } from "./auth/tokens.js";
 import { discoveryBegin, type Ctx } from "./discovery/begin.js";
-import { discoveryFinish, discoveryStatus, forget, markRecommended, verifyTracks } from "./discovery/finish.js";
+import { discoveryFinish, discoveryReview, discoveryStatus, forget, markRecommended, verifyTracks } from "./discovery/finish.js";
 
 export function text(t: string): CallToolResult {
   return { content: [{ type: "text", text: t }] };
@@ -59,9 +59,9 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
     {
       title: "Check web finds on Spotify",
       description:
-        "Step 2. Checks the research's tracks on Spotify (exact artist and title, the right release, the real label), drops ones already recommended, " +
-        "and gives each a W ref. Pass the research reply unchanged as `text`; don't retype it. Lines look like: artist | track | release | label | date | why | URL. " +
-        "Lines starting `LABEL |` record newly found labels.",
+        "Step 2, called by the research subagent with what it found. Checks each track on Spotify (exact artist and title, the right release, the real label), " +
+        "drops ones already recommended, and gives each a W ref. `text` is one track per line: artist | track | release | label | date | why | URL. " +
+        "Lines starting LABEL | record newly found labels. Call it as often as needed; each call adds to the run.",
       inputSchema: {
         lane,
         text: z.string().optional().describe("The research subagent's reply, unchanged."),
@@ -88,11 +88,24 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
   );
 
   server.registerTool(
+    "discovery_review",
+    {
+      title: "Review a lane run's candidates",
+      description:
+        "Step 3, after the research: lists everything you can pick in the current run, from the server's own copy. Verified web finds (W refs) with their reasons, " +
+        "then the known-source tracks (K and C refs), and the pick limits. Call it once, then discovery_finish.",
+      inputSchema: { lane },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (args) => run(async () => text(await discoveryReview(dir, args.lane))),
+  );
+
+  server.registerTool(
     "discovery_finish",
     {
       title: "Finish a lane run",
       description:
-        "Step 3. Give your picks as refs (K, C or W), best first. The server applies the lane's limits (dropping from the end of your list), adds the tracks to today's playlist, " +
+        "Step 4. Give your picks as refs (K, C or W), best first. The server applies the lane's limits (dropping from the end of your list), adds the tracks to today's playlist, " +
         "saves all state, and returns the report. Reply with exactly the text after the ===== REPORT line. Safe to repeat: a second call changes nothing.",
       inputSchema: {
         lane,

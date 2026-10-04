@@ -67,6 +67,29 @@ export function rulesLine(lane: Lane): string {
   return `Pick up to ${max} (aim for ${min}–${max}; fewer is fine if nothing else fits). At most ${lane.max_feed_picks} from K/C refs unless no web find verifies. At most ${lane.max_core_picks} by core artists.${lane.min_web_picks ? ` At least ${lane.min_web_picks} web picks when you have them.` : ""}`;
 }
 
+/** discovery_review's result: the brief's rules, then every pickable ref. */
+export function renderReview(run: RunFile, lane: Lane, web: RunItem[]): string {
+  const L: string[] = [];
+  L.push(`Lane ${lane.id}: ${lane.name}`);
+  L.push(`Baseline: ${lane.baseline}`);
+  if (lane.exclude) L.push(`Exclude: ${lane.exclude}`);
+  L.push(rulesLine(lane));
+  const ok = web.filter((i) => i.status === "ok");
+  L.push("", ok.length ? `Web finds, verified on Spotify (${ok.length}):` : "Web finds: none verified this run.");
+  for (const i of ok) {
+    L.push(itemLine(i));
+    if (i.why) L.push(`    why: ${clip(i.why, 200)}`);
+    if (i.label_note) L.push(`    ⚠ ${i.label_note}`);
+  }
+  const other = web.filter((i) => i.status !== "ok");
+  if (other.length) L.push(`Not pickable: ${other.map((i) => `${i.ref} ${i.artist} — ${i.title} (${i.status})`).join("; ")}`);
+  const feedRefs = [...run.order.feed.flatMap((r) => run.groups[r] ?? [r]), ...run.order.carried];
+  L.push("", feedRefs.length ? `From known labels and artists (${feedRefs.length}):` : "From known labels and artists: none.");
+  for (const r of feedRefs) L.push(itemLine(run.items[r]!));
+  L.push("", "Next: call discovery_finish with your picks as refs, best first.");
+  return fit(L.join("\n"));
+}
+
 /** verify_tracks' result: one line per candidate. */
 export function renderVerifyLines(items: RunItem[], extra: string[]): string {
   const L: string[] = [];

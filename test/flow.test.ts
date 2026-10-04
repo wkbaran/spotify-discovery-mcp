@@ -97,6 +97,13 @@ describe("a lane run", () => {
     expect(verify.text).toMatch(/W3 dup Sulphur — Dat Luv · recommended 2026-09-18 \(legacy\)/);
     expect(verify.text).toContain("Labels noted for this lane: DnB Doctor");
 
+    // review: the server's own list of what can be picked
+    const review = await call(client, "discovery_review", { lane: "a-dnb" });
+    expect(review.text).toMatch(/Web finds, verified on Spotify \(1\):\nW1 {2}Skrimor — Kraken/);
+    expect(review.text).toContain("why: Hanzom: 'a three-track assault'");
+    expect(review.text).toContain("Not pickable: W2 Gridlok — Fever (pending); W3 Sulphur — Dat Luv (dup)");
+    expect(review.text).toMatch(/Sully — Chatter/);
+
     // finish: picks best first; feed limit 3 because one web find verified; core limit 2
     const refs = (s: string) => [...begin.text.matchAll(new RegExp(`(K\\d+(?:\\.\\d+)?) {2}${s}`, "g"))].map((m) => m[1]!);
     const chatter = refs("Sully — Chatter")[0]!;
