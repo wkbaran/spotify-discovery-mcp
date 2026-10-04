@@ -190,6 +190,22 @@ describe("a lane run", () => {
     expect(b.text).toContain("hermes20261002");
   });
 
+  it("two lanes finishing at once with the same track add it once", async () => {
+    const both = { ...LANES, lanes: { ...LANES.lanes, "b-ukg": { ...LANES.lanes["b-ukg"], labels: ["Critical Music"] } } };
+    await writeFile(join(dir, "lanes.json"), JSON.stringify(both));
+    const [c1, c2] = await Promise.all([connect(), connect()]);
+    const [a, b] = await Promise.all([call(c1, "discovery_begin", { lane: "a-dnb" }), call(c2, "discovery_begin", { lane: "b-ukg" })]);
+    const ref = (t: string) => t.match(/(K\d+\.\d+) {2}Sully — Chatter/)![1]!;
+    const [fa, fb] = await Promise.all([
+      call(c1, "discovery_finish", { lane: "a-dnb", picks: [ref(a.text)] }),
+      call(c2, "discovery_finish", { lane: "b-ukg", picks: [ref(b.text)] }),
+    ]);
+    expect(spotify.playlistUris("pl1")).toHaveLength(1);
+    expect([fa.text, fb.text].filter((t) => t.includes("*was already in the playlist*"))).toHaveLength(1);
+    const history = await readJson<History>("history.json");
+    expect(history.tracks.filter((t) => t.title === "Chatter")).toHaveLength(1);
+  });
+
   it("accepts picks as a JSON string and a dry run saves nothing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
