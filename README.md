@@ -2,7 +2,7 @@
 
 An MCP server that runs a Spotify discovery playlist for a scheduled agent, so the agent's model only has to judge music.
 
-**Status: design.** The docs describe what will be built; the code isn't written yet. The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
+**Status: 0.1.0, built and tested, not yet deployed.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
 
 ## Why
 
@@ -25,7 +25,7 @@ Each step is done either by **code** (this server) or by the **model**.
 |---|---|---|---|
 | 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists, drops anything already recommended, and returns a short list with refs (`K1`, `C1`) |
 | 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered |
-| 3 | `verify_tracks(lane, candidates)` | code | Checks each web find on Spotify with exact field searches, dedups it, and gives it a ref (`W1`) |
+| 3 | `verify_tracks(lane, text)` | code | Reads the research reply as it is, checks each find on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
 | 4 | Judge | model | Picks the best fits by ref, in order of preference |
 | 5 | `discovery_finish(lane, picks, …)` | code | Applies the pick rules, adds tracks that aren't already in the playlist, saves all state, and returns the finished report |
 | 6 | Reply | model | Sends the report unchanged |
@@ -94,11 +94,77 @@ When research turns up a new label, `discovery_finish` saves it to that lane as 
 
 ## Setup
 
-Not available yet; see [docs/design.md](docs/design.md#setup) for the plan. In outline:
+### 1. Build
 
-- **Its own Spotify login.** `spotify-discovery-mcp login` runs a PKCE login and saves tokens to the server's own file. It never shares a refresh token with another client.
-- **A data directory, `SPOTIFY_DISCOVERY_DIR`.** It holds `lanes.json` (yours to edit) and the state the server writes.
-- **The Hermes cron jobs** get the `spotify-discovery` toolset instead of `file` and `spotify`.
+```sh
+npm install
+npm test
+npm run build      # bundles everything into dist/cli.js; nothing to install on the host
+```
+
+### 2. Log in to Spotify
+
+The server has its own login and refresh token, so it can't invalidate another client's (Hermes's own Spotify tools, for example). Spotify gives new Development Mode apps one client id per developer, so use the app you already have, and register its redirect URI if it isn't there yet.
+
+```sh
+SPOTIFY_DISCOVERY_AUTH=./auth.json node dist/cli.js login --client-id <your app's client id>
+# headless, or when the browser can't reach 127.0.0.1:
+SPOTIFY_DISCOVERY_AUTH=./auth.json node dist/cli.js login --client-id <id> --paste
+```
+
+The default redirect URI is `http://127.0.0.1:43827/spotify/callback`; change it with `--redirect-uri`. The token file is written with mode 0600. Copy it to the host, to `SPOTIFY_DISCOVERY_AUTH` or `$SPOTIFY_DISCOVERY_DIR/auth.json`.
+
+### 3. The data directory
+
+`SPOTIFY_DISCOVERY_DIR` holds:
+
+- `lanes.json`: yours. Start from [hermes/lanes.example.json](hermes/lanes.example.json), which has the six lanes from the original cron prompts.
+- `taste_profile.json`: optional; `core_artists` from your listening, for `max_core_picks`.
+- The state the server writes: `history.json`, `days.json`, `lanes/<lane>.json`, `runs/`.
+
+To carry over what the old jobs recommended, run `node dist/cli.js import <old dir>` once. It reads `recommendation_history.json` and `today_playlist.json`.
+
+`node dist/cli.js status` checks the login and shows each lane.
+
+### 4. Hermes
+
+In `config.yaml`:
+
+```yaml
+mcp_servers:
+  spotify-discovery:
+    command: node
+    args: [/opt/data/mcp/spotify-discovery-mcp/dist/cli.js]
+    env:
+      SPOTIFY_DISCOVERY_DIR: /opt/data/sandbox/spotify_discovery
+      SPOTIFY_DISCOVERY_AUTH: /opt/data/mcp/spotify-discovery-home/auth.json
+```
+
+Install [hermes/SKILL.md](hermes/SKILL.md) as the `spotify-discovery` skill. Then for each lane job:
+
+- set `enabled_toolsets` to `["delegation", "web", "spotify-discovery"]`;
+- set skills to `["spotify-discovery", "searxng-search"]`;
+- set the prompt to "Run the spotify-discovery skill for lane a-dnb." (with that job's lane).
+
+### Settings
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SPOTIFY_DISCOVERY_DIR` | (required) | The data directory |
+| `SPOTIFY_DISCOVERY_AUTH` | `$SPOTIFY_DISCOVERY_DIR/auth.json` | The token file |
+| `SPOTIFY_DISCOVERY_TZ` | `lanes.json`'s `timezone` | Which day "today" is |
+| `SPOTIFY_DISCOVERY_METADATA` | `beatport,soundcloud` | Where to look up genre; `off` for nowhere |
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `discovery_begin(lane)` | Today's playlist, the feed and carried-over candidates, with refs |
+| `verify_tracks(lane, text)` | Checks the research reply's tracks on Spotify; W refs |
+| `discovery_finish(lane, picks, …)` | Applies the rules, adds tracks, saves, returns the report |
+| `discovery_status(lane?)` | Read-only overview |
+| `mark_recommended(lane, tracks)` | Repair: add tracks to history |
+| `forget(lane, label \| artist)` | Repair: remove a learned label or artist |
 
 ## Spotify API notes
 

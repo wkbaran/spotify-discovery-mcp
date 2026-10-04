@@ -26,7 +26,7 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
    - each release's tracks, grouped by release;
    - for releases found through an artist, the label from the album's ℗ line. That's one extra request per release, so the work list can show the label for every item.
 4. **Adds new candidates to the lane's pool**, skipping anything recommended before (history, by URI or by normalized key) or already picked, rejected or expired.
-5. **Writes a run file** with refs, and returns the work list.
+5. **Writes a run file** with refs, and returns the work list. `begin` changes nothing else; what it learned (expired items, pending re-checks, artist ids, active labels) is applied by `finish`.
 
 Example result:
 
@@ -55,7 +55,7 @@ The list is capped at `feed_cap` entries (default 25). Ordering is fixed: promot
 
 ### `verify_tracks(lane, candidates)`
 
-`candidates`: `[{artist, track, release?, label?, released?, why, source_url}]`. This is the subagent's output, passed through. The model can't send it as refs, because these are new names.
+`text`: the research subagent's reply, unchanged. The server parses it: one track per line, `artist | track | release | label | date | why | URL`, in any decoration (bullets, numbering, bold), with URLs and dates found wherever they sit, and `LABEL | name | URL | note` lines for new labels. The model doesn't have to retype anything, so it can't renumber or mangle the finds. `candidates`, the same fields as objects, is also accepted.
 
 For each candidate the server:
 
@@ -81,12 +81,12 @@ W4 ✗ Minimalist — Reborn · closest was a different artist named "Minimalist
 
 It can be called more than once in a run, for example after a retried research task. Refs keep counting up.
 
-### `discovery_finish(lane, picks, why?, reject?, new_labels?, thin?)`
+### `discovery_finish(lane, picks, why?, reject?, thin?, dry_run?)`
 
 - `picks`: refs, best first.
 - `why`: notes for picked K or C items that don't have a sourced reason (`{"K2": "Critical: 'acid-tipped breakbeats…'"}`). W items already have theirs.
 - `reject`: refs the model saw and judged wrong for this lane; they don't carry over.
-- `new_labels`: `[{name, source_url, note}]` from the research.
+- New labels come from the research reply's `LABEL |` lines, which `verify_tracks` already recorded.
 - `thin`: whether the research came back limited.
 
 Steps, in order:

@@ -1,0 +1,83 @@
+{
+  "timezone": "America/Denver",
+  "playlist": {
+    "name": "hermes{YYYYMMDD}",
+    "description": "Discovery playlist auto-curated from your listening profile",
+    "public": false
+  },
+  "defaults": {
+    "max_feed_picks": 3,
+    "max_core_picks": 2,
+    "min_web_picks": 0,
+    "feed_cap": 25,
+    "carry_runs": 4,
+    "max_age_days": 365,
+    "pending_days": 42,
+    "quiet_runs": 8
+  },
+  "lanes": {
+    "a-dnb": {
+      "name": "Neurofunk, techstep, and experimental DnB",
+      "baseline": "Dark/technical DnB, neurofunk, techstep, experimental DnB, and exceptional halftime — the Noisia, Vision, Blackout, and Critical lineage.",
+      "research": "This lane releases less often: 1–3 excellent, current fits beat padding with generic DnB, liquid DnB, or weakly related material.",
+      "target": [3, 6],
+      "labels": ["Eatbrain", "Blackout Music", "Critical Music", "Vision Recordings", "MethLab", "Bad Taste", "Neuropunk", "Overview Music", "Invisible Recordings"],
+      "artists": ["Omneum", "Sam Binga"],
+      "genres": ["Drum & Bass"],
+      "tags": ["neurofunk", "techstep", "halftime", "drum & bass", "drum and bass", "dnb"]
+    },
+    "b-ukg": {
+      "name": "UK garage, bassline, and speed garage",
+      "baseline": "UK garage, bassline, speed garage, 2-step, organ-bass garage, and credible garage-house hybrids. Prioritize the Sammy Virji/Katy B side of the profile.",
+      "research": "Night Bass, Insomniac and Toolroom count only where the specific release has real garage/bassline character, not just a house track with a garage vocal chop.",
+      "exclude": "Straightforward tech house, generic slap house, and pop-house that only uses a surface garage vocal sample. The release needs real garage/bassline/2-step rhythm and bass programming.",
+      "target": [5, 8],
+      "labels": ["Hardline Sounds", "Locked On", "RUDEFLEX RECORDS", "Night Bass"],
+      "artists": ["Silva Bumpa"],
+      "genres": ["UK Garage / Bassline"],
+      "tags": ["garage", "bassline", "2-step", "2step", "speed garage", "ukg"]
+    },
+    "c-bass": {
+      "name": "Bass house, tech house, and electro-club",
+      "baseline": "Bass house, muscular tech house, electro-house revival, dirty club tracks, and high-energy groove-forward house. Reference points for the sound: James Hype, Disco Lines, tougher John Summit material, and Diplo-style dance-floor production — they describe the sound, not artists to avoid.",
+      "exclude": "Melodic/progressive house, generic pop EDM, and UK garage/bassline (another lane). The release needs real bass-house/tech-house/electro-club energy, not just a house tag.",
+      "target": [5, 8],
+      "labels": ["Night Bass", "Confession", "Insomniac Records", "Toolroom", "HEXAGON", "Experts Only"],
+      "artists": ["Dub War", "Kyle Watson", "Walker & Royce"],
+      "genres": ["Bass House", "Tech House", "Electro"],
+      "tags": ["bass house", "tech house", "electro"]
+    },
+    "d-exp": {
+      "name": "Experimental bass, 140, and future-facing club",
+      "baseline": "Experimental bass, glitchy/sample-based production, experimental trap, future bass, 140/deep dubstep, left-field dubstep, breaks, and bass-driven club hybrids. Reference points: adventurous Skrillex, ISOxo, Flume, Noisia-style sound design, nimino, and genuinely distinctive Fred again..-adjacent sample craft.",
+      "exclude": "Formulaic melodic future bass, generic brostep, and low-effort piano-vocal \"Fred again.. adjacent\" matches. The release needs real experimental, glitchy or left-field character.",
+      "target": [5, 8],
+      "labels": ["Sable Valley", "Deadbeats", "1985 Music", "Quality Goods Records", "Deep Dark & Dangerous", "Wakaan", "Gud Vibrations"],
+      "artists": ["Skrimor", "Unglued", "Conducta", "Łaszewo", "nimino"],
+      "genres": ["140 / Deep Dubstep / Grime", "Dubstep", "Bass / Club", "Breaks / Breakbeat / UK Bass", "Trap / Future Bass", "Drum & Bass"],
+      "tags": ["experimental", "glitch", "halftime", "140", "dubstep", "breaks", "bass music", "left-field"]
+    },
+    "e-indie": {
+      "name": "Indie electronic and crossover grooves",
+      "baseline": "Indie electronic, chillwave, indie dance, synth-pop, alternative R&B, electro-soul, sample-led electronic pop, and electronic/alternative crossover with strong songwriting or groove. Reference points: Toro y Moi, Balu Brigada, Maverick Sabre, Artemas, Whethan, GRiZ's soulful side, and selected Oliver Tree-type crossover.",
+      "exclude": "Generic bedroom pop, straight singer-songwriter tracks with little electronic identity, and rock without meaningful electronic overlap.",
+      "target": [4, 7],
+      "labels": [],
+      "artists": ["Whethan", "Maverick Sabre", "Artemas", "Oliver Tree", "Fred again..", "Machinedrum"],
+      "genres": ["Indie Dance", "Nu Disco / Disco", "Electronica", "Downtempo", "Dance / Pop"],
+      "tags": ["indie", "chillwave", "synth-pop", "synthpop", "nu disco", "disco", "electronica", "soul", "street soul"]
+    },
+    "f-melodic": {
+      "name": "Selective melodic, orchestral, and progressive electronic",
+      "baseline": "Worakls-adjacent melodic/progressive electronic, orchestral or cinematic electronic, and only unusually distinctive melodic house/techno — a narrow, selective lane, not a general melodic-techno catch-all. Reference points: Worakls, Hungry Music, relevant Anjunadeep, This Never Happened, Stil vor Talent, and Cercle-adjacent material with real compositional depth.",
+      "research": "Include a candidate only when its text sources support a distinctive compositional, orchestral, progressive, or unusual-production angle; a bare \"melodic techno\" tag isn't enough.",
+      "exclude": "Tale Of Us, Anyma, other major Afterlife flagship artists, and generic high-volume Afterlife-style material.",
+      "target": [2, 4],
+      "max_feed_picks": 2,
+      "labels": ["Hungry Music", "Anjunadeep", "This Never Happened", "Stil vor Talent", "Anjunachill"],
+      "artists": [],
+      "genres": ["Melodic House & Techno", "Progressive House", "Organic House", "Electronica"],
+      "tags": ["melodic", "progressive", "cinematic", "orchestral", "neoclassical", "neo-classical"]
+    }
+  }
+}
