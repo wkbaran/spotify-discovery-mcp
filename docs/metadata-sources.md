@@ -50,6 +50,7 @@ Feed items (K) can use the same lookup, which would give every feed pick a sourc
 ## Cautions
 
 - **Beatport, SoundCloud and Bandcamp are scraped.** None has an open API: Beatport's API needs partner access, and SoundCloud has stopped registering apps. Page formats change without notice, and heavy use could get the Hermes host blocked. Keep it light: about one lookup per verified track, twice a week. Cache results by ISRC, and fail open (no genre line) when a page doesn't parse.
+- **Beatport's Cloudflare is unpredictable.** It scores the TLS fingerprint together with the User-Agent: the same request got 200 from one client and 403 from another on the same IP, and sometimes flipped between runs. Lookups fail open, so a blocked day just means fewer genre lines.
 - Beatport search ranking is loose (searching "Sully Chatter" returned a 2009 hip-hop "Sully" first), so the artist and label check matters.
 - Discogs asks API clients for a descriptive User-Agent, and a token is free. Use one.
 
