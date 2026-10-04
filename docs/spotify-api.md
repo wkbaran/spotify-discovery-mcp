@@ -51,4 +51,4 @@ Spotify may also relink a track when it's added to a playlist, so the URI in the
 
 PKCE with a loopback redirect, as Hermes's own Spotify login does. Because of the one-client-ID limit, this server will probably have to use **the same client ID** as Hermes. It would still get **its own grant and refresh token**, stored in its own file, so neither client's refreshes can invalidate the other's. The redirect URI has to be registered on the app; Hermes's is `http://127.0.0.1:43827/spotify/callback`.
 
-Unverified: whether a second grant for the same app and user leaves the first refresh token working. Spotify normally allows several. Check after the first login that Hermes's Spotify tools still work.
+Verified 2026-10-03: after this server's login on Hermes's app, Hermes's own refresh token still refreshed. The two grants live side by side.
