@@ -27,7 +27,7 @@ Environment:
   SPOTIFY_DISCOVERY_DIR    Data directory (lanes.json and the state files). Required for the tools.
   SPOTIFY_DISCOVERY_AUTH   Token file (default: $SPOTIFY_DISCOVERY_DIR/auth.json)
   SPOTIFY_DISCOVERY_TZ     Overrides lanes.json's timezone
-  SPOTIFY_DISCOVERY_METADATA  beatport,soundcloud (default) or off
+  SPOTIFY_DISCOVERY_METADATA  off (default), or beatport, soundcloud or both
 `;
 
 async function main(argv: string[]): Promise<number> {

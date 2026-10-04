@@ -31,9 +31,14 @@ export function timezoneOverride(): string | undefined {
   return process.env.SPOTIFY_DISCOVERY_TZ || undefined;
 }
 
-/** Which metadata sources to look up genre in. Default both; "off" for none. */
+/**
+ * Which metadata sources to look up genre in: "beatport", "soundcloud", or
+ * both. Off by default: neither site has an open API, so the lookups scrape
+ * their pages, which their terms don't allow. Turning it on is the operator's
+ * call. Keep the honest User-Agent, and never try to get past a block.
+ */
 export function metadataSources(): Set<"beatport" | "soundcloud"> {
-  const raw = (process.env.SPOTIFY_DISCOVERY_METADATA ?? "beatport,soundcloud").toLowerCase();
+  const raw = (process.env.SPOTIFY_DISCOVERY_METADATA ?? "off").toLowerCase();
   const out = new Set<"beatport" | "soundcloud">();
   if (raw === "off" || raw === "none") return out;
   for (const s of raw.split(/[\s,]+/)) if (s === "beatport" || s === "soundcloud") out.add(s);
