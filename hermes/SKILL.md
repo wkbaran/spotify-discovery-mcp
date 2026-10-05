@@ -1,7 +1,7 @@
 ---
 name: spotify-discovery
 description: Add one genre lane's tracks to today's Spotify discovery playlist. The spotify-discovery MCP server fetches, verifies, dedups, adds and saves; you research and judge.
-version: 1.4.0
+version: 1.5.0
 platforms: [linux]
 metadata:
   hermes:
@@ -67,7 +67,7 @@ Call `delegate_task` with `tasks` as a list holding exactly one task. Its goal i
 If the subagent says it was rate limited, go straight to step 3 with what it found. If it errors, times out, or says DONE with fewer than 3, retry once with the same goal plus: Try different searches from last time. Don't research yourself.
 
 ### 3. Review
-Call `discovery_review` with `lane`. It lists everything you can pick, from the server's own records: verified web finds (W refs, with their reasons), then the known-source tracks (K and C refs), and the pick limits. A `Beatport:` or `SoundCloud:` line gives genre and tempo; "⚠ genre outside this lane" means that genre doesn't fit, so pick it only if the brief clearly supports it.
+Always call `discovery_review` with `lane`, even if you think you know the refs: `discovery_finish` refuses to run until you have. It lists everything you can pick, from the server's own records: verified web finds (W refs, with their reasons), then the known-source tracks (K and C refs), and the pick limits. A `Beatport:` or `SoundCloud:` line gives genre and tempo; "⚠ genre outside this lane" means that genre doesn't fit, so pick it only if the brief clearly supports it.
 
 ### 4. Finish
 Choose the tracks that best fit the baseline. Then call `discovery_finish` with:

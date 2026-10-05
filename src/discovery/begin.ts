@@ -25,6 +25,9 @@ const MAX_META_LOOKUPS = 20;
 /** A first run looks back this far: just inside what `tag:new` search covers, so it stays the cheap search. */
 const FIRST_RUN_DAYS = 13;
 
+/** A begin within this long of an unfinished run's start continues that run instead of starting another. */
+export const RESUME_MINUTES = 90;
+
 /** Today's playlist: the one recorded for today, or a new one, created under the days.json lock. */
 export async function todaysPlaylist(ctx: Ctx, day: string, template: { name: string; description: string; public: boolean }, now: Date): Promise<Day> {
   const r = await updateDays(ctx.dir, async (d) => {
@@ -45,6 +48,20 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
   const lanes = await loadLanes(ctx.dir);
   const lane = getLane(lanes, laneId);
   const day = localDate(now, lanes.timezone);
+  const runs = runStore(ctx.dir);
+
+  // A second begin while a run is open continues that run. A retry after a timeout, or a research
+  // subagent calling begin (as d-exp's did on 2026-10-04), would otherwise orphan its verified finds.
+  const open = (await runs.latest(lane.id))?.run;
+  if (open && !open.finished && open.day === day && now.getTime() - Date.parse(open.started_at) < RESUME_MINUTES * 60_000) {
+    const [openState, openCore] = await Promise.all([readLaneState(ctx.dir, lane.id), loadCoreArtists(ctx.dir)]);
+    const view = renderWorkList(open, lane, { labels: labelSources(lane, openState).map((s) => s.name), artists: coveredArtists(lane, openState, openCore) });
+    return {
+      run: open,
+      view: `Continuing this lane's open run (started ${open.started_at}; nothing new was fetched). If you are the research subagent, call only verify_tracks.\n\n${view}`,
+    };
+  }
+
   const playlist = await todaysPlaylist(ctx, day, lanes.playlist, now);
   const [history, state, coreArtists] = await Promise.all([readHistory(ctx.dir), readLaneState(ctx.dir, lane.id), loadCoreArtists(ctx.dir)]);
   const seen = new Seen(history, playlist);
@@ -161,7 +178,6 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
   }
   for (const i of Object.values(items)) if (i.fit === undefined && i.meta) i.fit = fitsLane(i.meta, lane);
 
-  const runs = runStore(ctx.dir);
   const id = await runs.newId(now, lane.id);
   const run: RunFile = {
     id,

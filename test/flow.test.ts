@@ -163,6 +163,7 @@ describe("a lane run", () => {
     const all = [...begin.text.matchAll(/^\s*(K\d+(?:\.\d+)?) {2}/gm)].map((m) => m[1]!);
     expect(all.length).toBeGreaterThanOrEqual(4);
     await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: all });
     expect(await lastReport("a-dnb")).toMatch(/Dropped by limits: .*\(feed limit of 3\)/);
     expect(spotify.playlistUris("pl1")).toHaveLength(3);
@@ -172,6 +173,7 @@ describe("a lane run", () => {
     const client = await connect();
     const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
     const group = begin.text.match(/(K\d+) {2}Flux \/ Chatter/)![1]!;
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: [group, `${group}.1`] });
     expect(r.text).toMatch(/^Saved\. Added 1 track\(s\)/);
     expect(await lastReport("a-dnb")).toContain("**Added (1):**");
@@ -188,6 +190,7 @@ describe("a lane run", () => {
   it("refuses unknown refs and saves nothing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["K99"] });
     expect(r.isError).toBe(true);
     expect(r.text).toContain("Unknown refs: K99");
@@ -208,6 +211,7 @@ describe("a lane run", () => {
     const [c1, c2] = await Promise.all([connect(), connect()]);
     const [a, b] = await Promise.all([call(c1, "discovery_begin", { lane: "a-dnb" }), call(c2, "discovery_begin", { lane: "b-ukg" })]);
     const ref = (t: string) => t.match(/(K\d+\.\d+) {2}Sully — Chatter/)![1]!;
+    await Promise.all([call(c1, "discovery_review", { lane: "a-dnb" }), call(c2, "discovery_review", { lane: "b-ukg" })]);
     const [fa, fb] = await Promise.all([
       call(c1, "discovery_finish", { lane: "a-dnb", picks: [ref(a.text)] }),
       call(c2, "discovery_finish", { lane: "b-ukg", picks: [ref(b.text)] }),
@@ -225,6 +229,7 @@ describe("a lane run", () => {
     const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
     const all = [...begin.text.matchAll(/^\s*(K\d+\.\d+|K\d+) {2}(?!.* · \d+ tracks:)/gm)].map((m) => m[1]!);
     expect(all.length).toBeGreaterThanOrEqual(5);
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: [all[0]], reject: all.slice(1) });
     expect(r.text).toContain(`Kept the first 3 rejections; ${all.slice(4).join(", ")} carry over instead.`);
     const state = await readJson<LaneState>("lanes/a-dnb.json");
@@ -235,6 +240,7 @@ describe("a lane run", () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
     await call(client, "verify_tracks", { lane: "a-dnb", text: `${RESEARCH}\nLABEL | Hanzom Music | https://example.com/hanzom | Neurofunk label` });
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
     expect(await lastReport("a-dnb")).toContain("New labels for this lane: DnB Doctor, Hanzom Music");
     expect(r.text).toContain("Reply with one line: Done: a-dnb");
@@ -257,10 +263,40 @@ describe("a lane run", () => {
     expect(spotify.created).toBe(0);
   });
 
+  it("refuses to finish before discovery_review, so a research subagent can't end the lane", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    const early = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
+    expect(early.isError).toBe(true);
+    expect(early.text).toMatch(/^Call discovery_review for lane a-dnb first/);
+    expect(spotify.playlistUris("pl1")).toHaveLength(0);
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    expect((await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] })).text).toMatch(/^Saved\. Added 1 track/);
+  });
+
+  it("continues the open run when discovery_begin is called again, keeping its web finds", async () => {
+    const client = await connect();
+    const first = await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    const requests = spotify.log.length;
+    const second = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(second.text).toMatch(/^Continuing this lane's open run \(started 2026-10-02T15:00:00Z; nothing new was fetched\)\. If you are the research subagent, call only verify_tracks\./);
+    expect(second.text).toContain(first.text.split("\n")[0]);
+    expect(spotify.log.length).toBe(requests);
+    expect((await readdir(join(dir, "runs"))).filter((f) => f.startsWith("a-dnb-"))).toHaveLength(1);
+    expect((await call(client, "discovery_review", { lane: "a-dnb" })).text).toContain("W1  Skrimor — Kraken");
+    // Long after, a new begin starts a fresh run.
+    now = new Date(now.getTime() + 2 * 3_600_000);
+    await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect((await readdir(join(dir, "runs"))).filter((f) => f.startsWith("a-dnb-"))).toHaveLength(2);
+  });
+
   it("accepts why as a plain sentence instead of failing", async () => {
     const client = await connect();
     await call(client, "discovery_begin", { lane: "a-dnb" });
     await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    await call(client, "discovery_review", { lane: "a-dnb" });
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"], why: "Hanzom calls it an assault; fits the lane." });
     expect(r.isError).toBe(false);
     expect(r.text).toContain("Added 1 track(s)");

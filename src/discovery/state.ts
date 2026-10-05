@@ -179,6 +179,8 @@ export interface RunFile {
     active_labels: string[];
   };
   finished?: { at: string; report: string };
+  /** When discovery_review was first called; discovery_finish requires it. */
+  reviewed_at?: string;
   /** Spotify API requests made for this run so far (begin, verify_tracks, finish). */
   spotify_requests?: number;
 }

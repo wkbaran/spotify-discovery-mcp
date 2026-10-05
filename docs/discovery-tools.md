@@ -106,6 +106,7 @@ Things to notice:
 - **The 2024 release on Obsidian Audio isn't listed.** It's older than the run's start date ("since 2026-09-23": a first run looks back 13 days, which keeps it to the cheap `tag:new` search).
 - **`[core artist]`** marks an artist from `taste_profile.json`. Those count toward `max_core_picks`.
 - **The covered lists** tell the research where *not* to look. The skill copies them into the subagent's goal.
+- **Calling `discovery_begin` again** within 90 minutes, while this run is unfinished, fetches nothing and returns this same list, headed "Continuing this lane's open run". A retry after a timeout, or a research subagent that calls `begin` against the skill's instructions, can't replace the run and orphan its web finds.
 
 ## 2. Web research and `verify_tracks`
 
@@ -153,7 +154,7 @@ The subagent then replies only "DONE" and a count, so none of this text passes t
 
 ## 3. `discovery_review`
 
-Lists everything pickable in the run from the server's own run file: verified web finds with their reasons, then the known-source tracks, and the limits.
+Lists everything pickable in the run from the server's own run file: verified web finds with their reasons, then the known-source tracks, and the limits. It also records that the run was reviewed: `discovery_finish` refuses to run until it has been, so only the main model, which reviews the candidates, can finish the lane. A research subagent that calls `discovery_finish` gets an error and saves nothing.
 
 <!-- args: discovery_review -->
 | Field | Meaning |

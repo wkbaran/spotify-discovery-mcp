@@ -55,7 +55,7 @@ It can be called more than once in a run, for example after a retried research t
 
 ### `discovery_review(lane)`
 
-Read-only. Lists everything pickable in the current run from the run file: verified web finds with their reasons, then the K and C tracks, the items that can't be picked (pending, dup) and the pick limits. The main model calls it after the research, so it never needs the subagent's text.
+Lists everything pickable in the current run from the run file: verified web finds with their reasons, then the K and C tracks, the items that can't be picked (pending, dup) and the pick limits. The main model calls it after the research, so it never needs the subagent's text. It records `reviewed_at` in the run file, and `discovery_finish` refuses (saving nothing) until that's set. On 2026-10-04 a research subagent ran `discovery_begin` and `discovery_finish` itself; this gate, and `begin` continuing an open run for 90 minutes instead of replacing it, stop that.
 
 ### `discovery_finish(lane, picks, why?, reject?, thin?, dry_run?)`
 
@@ -67,7 +67,7 @@ Read-only. Lists everything pickable in the current run from the run file: verif
 
 Steps, in order:
 
-1. Resolve refs (tolerantly). Unknown refs are the only error, and nothing is written when there are any.
+1. Refuse, saving nothing, if `discovery_review` hasn't been called for this run (dry runs excepted). Resolve refs (tolerantly). Unknown refs are the only error, and nothing is written when there are any.
 2. Apply the pick rules from the README: keep preference order, drop from the end to meet `target`, `max_feed_picks` (lifted if the run has no ✓ W items), `max_core_picks` and `min_web_picks`.
 3. Under the lock: re-read the live playlist, add only tracks not already in it (compared by URI and by key), then update `days.json`.
 4. Update `history.json`, the lane's pool (picks, rejections, passes, expiry), its labels and artists, and its `last_run` (server clock at `begin`, never moving backwards).

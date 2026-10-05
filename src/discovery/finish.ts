@@ -105,6 +105,12 @@ export async function discoveryReview(dir: string, laneId: string): Promise<stri
   const run = await openRun(dir, lane.id);
   if (run.finished) return `Lane ${lane.id}'s latest run is already finished; the report job posts its report. Reply with one line: Done: ${lane.id}`;
   const web = run.order.web.map((r) => run.items[r]!);
+  // discovery_finish requires this, so only the caller that reviewed the candidates (the main
+  // model, never the research subagent) can finish the run.
+  if (!run.reviewed_at) {
+    run.reviewed_at = isoSeconds(new Date());
+    await runStore(dir).write(run.id, run);
+  }
   return renderReview(run, lane, web);
 }
 
@@ -126,6 +132,12 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
   const lane = getLane(lanes, laneId);
   const run = await openRun(ctx.dir, lane.id);
   const requestsAtStart = ctx.client.requests;
+  if (!run.finished && !run.reviewed_at && !args.dry_run) {
+    return {
+      ok: false,
+      text: `Call discovery_review for lane ${lane.id} first: it lists what you can pick. Nothing was saved. If you are the research subagent, don't finish the lane: call only verify_tracks, then reply DONE.`,
+    };
+  }
   if (run.finished) return { ok: true, text: `This run was already finished; nothing changed. Reply with one line: Done: ${run.lane}` };
 
   // Refs: a multi-track release ref means its first track.

@@ -96,9 +96,10 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       title: "Review a lane run's candidates",
       description:
         "Step 3, after the research: lists everything you can pick in the current run, from the server's own copy. Verified web finds (W refs) with their reasons, " +
-        "then the known-source tracks (K and C refs), and the pick limits. Call it once, then discovery_finish.",
+        "then the known-source tracks (K and C refs), and the pick limits. Call it once, then discovery_finish, which requires it.",
       inputSchema: { lane },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      // Not read-only: it records that the run was reviewed, which discovery_finish requires.
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     (args) => run(async () => text(await discoveryReview(dir, args.lane))),
   );
