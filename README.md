@@ -1,6 +1,22 @@
-# spotify-discovery-mcp
+<div align="center">
 
-An MCP server that runs a Spotify discovery playlist for a scheduled agent, so the agent's model only has to judge music.
+# Spotify Discovery MCP
+
+**A Spotify discovery playlist run by a scheduled agent, where the model only has to judge the music.**
+
+![Node 26+](https://img.shields.io/badge/node-26%2B-339933?logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-stdio-6E56CF)
+![Tools](https://img.shields.io/badge/tools-7-informational)
+![Spotify](https://img.shields.io/badge/Spotify-Web%20API-1DB954?logo=spotify&logoColor=white)
+![Hermes Agent](https://img.shields.io/badge/runs%20on-Hermes%20Agent-orange)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+
+[Why](#why) · [How a lane run works](#how-a-lane-run-works) · [Pick rules](#where-picks-come-from-and-how-theyre-mixed) · [Setup](#setup) · [Tools](#tools) · [Spotify API notes](#spotify-api-notes)
+
+</div>
+
+An MCP server that runs a Spotify discovery playlist for a scheduled agent. Fetching, verifying, deduplicating and saving state are all code, so the agent's model only has to judge music.
 
 **Status: running on Hermes since 2026-10-03.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
 
