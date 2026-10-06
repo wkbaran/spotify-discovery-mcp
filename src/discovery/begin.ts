@@ -90,7 +90,7 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
         continue;
       }
       effects.pending_found.push(p.key);
-      pendingNow.push({ ...toPoolItem(v.track, { source: "web", label: v.label, why: p.why, source_url: p.source_url, first_seen: p.first_seen }), passes: 0 });
+      pendingNow.push({ ...toPoolItem(v.track, { source: "web", label: v.label, p_label: v.pLabel, why: p.why, source_url: p.source_url, first_seen: p.first_seen }), passes: 0 });
     } catch (err) {
       rethrowRateLimit(err);
       effects.pending_checked.push(p.key);
@@ -129,7 +129,7 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
     order.feed.push(ref);
     const shown = fresh.slice(0, MAX_TRACKS_PER_RELEASE);
     const make = (t: Track, itemRef: string): RunItem => {
-      const pool = toPoolItem(t, { source: "feed", label: r.label, via: `${r.via.kind} ${r.via.name}`, first_seen: day }, r);
+      const pool = toPoolItem(t, { source: "feed", label: r.label, p_label: r.pLabel, via: `${r.via.kind} ${r.via.name}`, first_seen: day }, r);
       taken.add(pool.key);
       return { ...pool, ref: itemRef, kind: "K", core: isCore(pool.artists) };
     };
@@ -209,7 +209,7 @@ function coveredArtists(lane: Lane, state: LaneState, _core: string[]): string[]
 
 export function toPoolItem(
   t: Track,
-  o: { source: PoolItem["source"]; label?: string; via?: string; why?: string; source_url?: string; first_seen: string },
+  o: { source: PoolItem["source"]; label?: string; p_label?: string; via?: string; why?: string; source_url?: string; first_seen: string },
   release?: FeedRelease,
 ): PoolItem {
   const album = release?.album ?? t.album;
@@ -226,6 +226,7 @@ export function toPoolItem(
     release_type: album?.album_type ?? "",
     released: album?.release_date ?? "",
     label: o.label,
+    p_label: o.p_label,
     source: o.source,
     via: o.via,
     why: o.why,

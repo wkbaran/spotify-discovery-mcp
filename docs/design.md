@@ -24,7 +24,7 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
    - each label (seed, found and promoted): `label:"…" tag:new` album search, paged; if `last_run` is more than 13 days ago, `label:"…" year:…` filtered by `release_date`;
    - each lane artist: `/artists/{id}/albums`, filtered by `release_date`;
    - each release's tracks, grouped by release;
-   - for releases found through an artist, the label from the album's ℗ line. That's one extra request per release, so the work list can show the label for every item.
+   - every release's label from the album's ℗ line. That's one extra request per release, so the work list can show the label for every item. `label:` search is loose ("Bubble" also finds "Bubble beats bollywood"), so a release found through a label is kept only if its ℗ label is that label. Once a learned label has a `spotify_name` (the exact ℗ name, saved by `finish` the first time any release in a run shows it), the ℗ label must match that name; until then, and for seed labels, every word of the label's name must appear in the ℗ label.
 4. **Adds new candidates to the lane's pool**, skipping anything recommended before (history, by URI or by normalized key) or already picked, rejected or expired.
 5. **Writes a run file** with refs, and returns the work list. `begin` changes nothing else; what it learned (expired items, pending re-checks, artist ids, active labels) is applied by `finish`.
 
@@ -90,7 +90,7 @@ All files are in `SPOTIFY_DISCOVERY_DIR`. The server writes them, except `lanes.
 | File | Written by | Contents |
 |---|---|---|
 | `lanes.json` | **you** | Lane definitions: name, baseline, target and limits, seed labels and artists. The server only reads it |
-| `lanes/<lane>.json` | server | What the lane has learned: found and promoted labels with counts, artists from picks with cached Spotify ids, the pool, pending items, `last_run` |
+| `lanes/<lane>.json` | server | What the lane has learned: found and promoted labels with counts and their confirmed ℗ names, artists from picks with cached Spotify ids, the pool, pending items, `last_run` |
 | `history.json` | server | Every track ever added: URI, artist, title, key, lane, date |
 | `days.json` | server | Recent days: playlist id, name and the tracks added (last 30 days) |
 | `taste_profile.json` | taste job | Read only; `core_artists` (see below) |

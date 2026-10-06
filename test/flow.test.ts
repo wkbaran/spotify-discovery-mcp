@@ -249,6 +249,31 @@ describe("a lane run", () => {
     expect(state.labels["dnb doctor"]).toMatchObject({ origin: "found", picks: 0 });
   });
 
+  it("learns a found label's ℗ name and then ignores look-alike labels in the feed", async () => {
+    spotify.addRelease({ artist: "DJ Perception", title: "As We Enter", tracks: ["As We Enter"], label: "Bubble", date: "2026-10-01" });
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "b-ukg" });
+    await call(client, "verify_tracks", { lane: "b-ukg", text: "DJ Perception | As We Enter | As We Enter | Bubble | 2026-10-01 | Bubble: 'a 4x4 stomper' | https://bubbleukg.bandcamp.com/album/as-we-enter\nLABEL | Bubble | https://bubbleukg.bandcamp.com/ | Underground garage label" });
+    await call(client, "discovery_review", { lane: "b-ukg" });
+    await call(client, "discovery_finish", { lane: "b-ukg", picks: ["W1"] });
+    expect((await readJson<LaneState>("lanes/b-ukg.json")).labels["bubble"]).toMatchObject({ origin: "promoted", spotify_name: "Bubble" });
+
+    // `label:"Bubble"` also finds Bubble beats bollywood; only the real label's release is listed.
+    spotify.addRelease({ artist: "Viksa Udesh", title: "SHIVAJI O SHIVAJI", tracks: ["SHIVAJI O SHIVAJI"], label: "Bubble beats bollywood", date: "2026-10-04" });
+    spotify.addRelease({ artist: "Silva Bumpa", title: "Bubble Up", tracks: ["Bubble Up"], label: "Bubble", date: "2026-10-04" });
+    now = new Date("2026-10-06T15:00:00Z");
+    const begin = await call(client, "discovery_begin", { lane: "b-ukg" });
+    expect(begin.text).toContain("Silva Bumpa — Bubble Up");
+    expect(begin.text).not.toContain("Viksa Udesh");
+  });
+
+  it("keeps word matching for a label without a confirmed ℗ name", async () => {
+    spotify.addRelease({ artist: "Viksa Udesh", title: "SHIVAJI O SHIVAJI", tracks: ["SHIVAJI O SHIVAJI"], label: "Hardline Sounds Bollywood", date: "2026-09-30" });
+    const client = await connect();
+    const begin = await call(client, "discovery_begin", { lane: "b-ukg" });
+    expect(begin.text).toContain("Viksa Udesh");
+  });
+
   it("stops at once when Spotify's quota is exceeded, and saves nothing", async () => {
     const client = await connect();
     spotify.quotaRetryAfter = 11991;

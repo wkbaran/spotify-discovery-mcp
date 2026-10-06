@@ -62,7 +62,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
           status_note: "not on Spotify (yet); re-checked each run",
         };
       } else {
-        const pool = toPoolItem(v.track, { source: "web", label: v.label, ...base });
+        const pool = toPoolItem(v.track, { source: "web", label: v.label, p_label: v.pLabel, ...base });
         const dup = seen.find(pool);
         const inRun = byKey.get(pool.key);
         item = { ...pool, ref, kind: "W", core: pool.artists.some((a) => core.has(textKey(a))), status: "ok", label_note: v.labelNote };
@@ -275,6 +275,14 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
     if (!k || seedLabels.has(k) || s.labels[k]) continue;
     s.labels[k] = { name: l.name.trim(), origin: "found", first_seen: day, source_url: l.source_url, note: l.note, picks: 0, quiet_runs: 0 };
     result.added.push(l.name.trim());
+  }
+
+  // A label's ℗ name, once a release in this run shows it exactly. From then on
+  // the feed matches that name only.
+  for (const i of Object.values(run.items)) {
+    if (!i.p_label || (i.kind === "W" && i.status !== "ok" && i.status !== "dup")) continue;
+    const learned = s.labels[labelKey(i.p_label)];
+    if (learned && !learned.spotify_name) learned.spotify_name = i.p_label;
   }
 
   // Picks and rejections are done with.

@@ -108,7 +108,7 @@ Web finds that verified but weren't picked go into the same pool. Web finds that
 
 ### The lane learns new labels
 
-When research turns up a new label, `discovery_finish` saves it to that lane as `found`, and the next run's feed includes it. A found label is promoted once one of its tracks is picked. It's dropped after a run of quiet runs, and the report says so. Labels you list in `lanes.json` are never dropped automatically. The report only notes when one has gone quiet.
+When research turns up a new label, `discovery_finish` saves it to that lane as `found`, and the next run's feed includes it. Spotify has no label IDs, and searching by label name also finds labels with similar names, so the first time a release on the label turns up, the server saves the label's exact name from the release's ℗ line. After that, the feed only takes releases whose ℗ line names that label. A found label is promoted once one of its tracks is picked. It's dropped after a run of quiet runs, and the report says so. Labels you list in `lanes.json` are never dropped automatically. The report only notes when one has gone quiet.
 
 ## Setup
 

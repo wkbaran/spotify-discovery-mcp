@@ -100,6 +100,8 @@ export interface Verified {
   track: Track;
   label?: string;
   /** Set when the ℗ label differs from the one the source gave. */
+  /** The label from the release's ℗ line, when it has one. */
+  pLabel?: string;
   labelNote?: string;
 }
 
@@ -147,7 +149,7 @@ export async function findOnSpotify(client: SpotifyClient, c: Candidate): Promis
     rethrowRateLimit(err); // the label is a nice-to-have; the rate limit isn't
   }
   const labelNote = c.label && label && !sameLabel(c.label, label) ? `label is ${label}, not ${c.label} as the source said` : undefined;
-  return { track: best, label: label ?? c.label, labelNote };
+  return { track: best, label: label ?? c.label, pLabel: label, labelNote };
 }
 
 /** A display credit for a Spotify track: "A, B & C" style is left to Spotify's names joined by commas. */

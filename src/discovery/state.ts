@@ -26,6 +26,8 @@ export interface PoolItem {
   release_type: string;
   released: string;
   label?: string;
+  /** The label as the release's ℗ line names it; unset when Spotify gave no copyright line. */
+  p_label?: string;
   source: "feed" | "web";
   /** How the feed found it: "label Critical Music", "artist Omneum". */
   via?: string;
@@ -56,6 +58,12 @@ export interface LearnedLabel {
   first_seen: string;
   source_url?: string;
   note?: string;
+  /**
+   * The label's name on a ℗ line of a release Spotify really has on it. Once
+   * set, the feed keeps only releases whose ℗ label is this one, because
+   * `label:` search is loose ("Bubble" also finds "Bubble beats bollywood").
+   */
+  spotify_name?: string;
   picks: number;
   /** Runs in a row where this label's feed had nothing new. */
   quiet_runs: number;

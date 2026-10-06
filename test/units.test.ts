@@ -178,6 +178,12 @@ describe("label matching for the feed", () => {
     expect(labelContains("Visionary Sounds Recordings", "Vision Recordings")).toBe(false);
     expect(labelContains("Criticals Music LLC", "Critical Music")).toBe(false);
     expect(labelContains("Bergundy", "Bad Taste")).toBe(false);
+    const { onLabel } = await import("../src/discovery/feed.js");
+    expect(onLabel("Bubble beats bollywood", { name: "Bubble" })).toBe(true);
+    expect(onLabel("Bubble beats bollywood", { name: "Bubble", spotifyName: "Bubble" })).toBe(false);
+    expect(onLabel("Bubble Records", { name: "Bubble", spotifyName: "Bubble" })).toBe(true);
+    expect(onLabel(undefined, { name: "Bubble" })).toBe(true);
+    expect(onLabel(undefined, { name: "Bubble", spotifyName: "Bubble" })).toBe(false);
   });
 });
 

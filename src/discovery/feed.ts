@@ -8,7 +8,9 @@ import type { LaneState } from "./state.js";
 export interface FeedRelease {
   album: Album;
   label?: string;
-  via: { kind: "label" | "artist"; name: string; group: "promoted" | "artist" | "seed" | "found" };
+  /** The label from the album's ℗ line, when it has one. */
+  pLabel?: string;
+  via: { kind: "label" | "artist"; name: string; group: "promoted" | "artist" | "seed" | "found"; spotifyName?: string };
   tracks: Track[];
 }
 
@@ -30,21 +32,23 @@ const MAX_RELEASES = 60;
 export interface FeedSource {
   name: string;
   group: FeedRelease["via"]["group"];
+  /** The label's confirmed ℗ name (learned labels only). */
+  spotifyName?: string;
 }
 
 /** The labels to search: promoted, then seeds from lanes.json, then found. One entry per label key. */
 export function labelSources(lane: Lane, state: LaneState): FeedSource[] {
   const out: FeedSource[] = [];
   const seen = new Set<string>();
-  const add = (name: string, group: FeedSource["group"]) => {
+  const add = (name: string, group: FeedSource["group"], spotifyName?: string) => {
     const k = labelKey(name);
     if (!k || seen.has(k)) return;
     seen.add(k);
-    out.push({ name, group });
+    out.push(spotifyName ? { name, group, spotifyName } : { name, group });
   };
-  for (const l of Object.values(state.labels)) if (l.origin === "promoted") add(l.name, "promoted");
+  for (const l of Object.values(state.labels)) if (l.origin === "promoted") add(l.name, "promoted", l.spotify_name);
   for (const name of lane.labels) add(name, "seed");
-  for (const l of Object.values(state.labels)) if (l.origin === "found") add(l.name, "found");
+  for (const l of Object.values(state.labels)) if (l.origin === "found") add(l.name, "found", l.spotify_name);
   return out.slice(0, MAX_LABELS);
 }
 
@@ -79,7 +83,7 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
     try {
       const found = (await client.searchAlbums(q, recentEnough ? 2 : 5)).filter(fresh);
       if (found.length) activeLabels.add(labelKey(src.name));
-      for (const a of found) if (!albums.has(a.id)) albums.set(a.id, { album: a, label: src.name, via: { kind: "label", name: src.name, group: src.group }, tracks: [] });
+      for (const a of found) if (!albums.has(a.id)) albums.set(a.id, { album: a, label: src.name, via: { kind: "label", name: src.name, group: src.group, spotifyName: src.spotifyName }, tracks: [] });
     } catch (err) {
       rethrowRateLimit(err);
       notes.push(`Label ${src.name}: search failed (${short(err)}).`);
@@ -114,8 +118,9 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
       // label at all, and `label:` search is loose ("Vision" also finds
       // Visionary Sounds), so a label-found release must really be on it.
       const actual = labelFromCopyrights((await client.album(r.album.id)).copyrights);
-      if (r.via.kind === "label" && actual && !labelContains(actual, r.via.name)) continue;
+      if (r.via.kind === "label" && !onLabel(actual, r.via)) continue;
       r.label = actual ?? r.label;
+      r.pLabel = actual;
       r.tracks = await client.albumTracks(r.album.id);
       if (r.via.kind === "label") matched.add(labelKey(r.via.name));
       kept.push(r);
@@ -127,6 +132,17 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
   // A label only counts as active if a release really on it turned up.
   for (const k of [...activeLabels]) if (!matched.has(k)) activeLabels.delete(k);
   return { releases: kept.filter((r) => r.tracks.length > 0), activeLabels, artistIds, notes };
+}
+
+/**
+ * Is a release found by searching for a label really on it? With the label's
+ * confirmed ℗ name, only that name counts ("Bubble" isn't "Bubble beats
+ * bollywood"); without one, every word of the label's name must be in the ℗
+ * label, and a release with no ℗ line is given the benefit of the doubt.
+ */
+export function onLabel(actual: string | undefined, via: { name: string; spotifyName?: string }): boolean {
+  if (via.spotifyName) return !!actual && labelKey(actual) === labelKey(via.spotifyName);
+  return !actual || labelContains(actual, via.name);
 }
 
 export function daysBetween(a: string, b: string): number {
