@@ -31,17 +31,21 @@ export function timezoneOverride(): string | undefined {
   return process.env.SPOTIFY_DISCOVERY_TZ || undefined;
 }
 
+export type MetadataSource = "beatport" | "soundcloud" | "deezer";
+
 /**
- * Which metadata sources to look up genre in: "beatport", "soundcloud", or
- * both. Off by default: neither site has an open API, so the lookups scrape
- * their pages, which their terms don't allow. Turning it on is the operator's
- * call. Keep the honest User-Agent, and never try to get past a block.
+ * Which metadata sources to look up genre in: any of "beatport", "soundcloud"
+ * and "deezer". Off by default. Beatport and SoundCloud have no open API, so
+ * those lookups scrape their pages, which their terms don't allow; turning
+ * them on is the operator's call. Keep the honest User-Agent, and never try to
+ * get past a block. Deezer has an official API that needs no key; its genres
+ * are coarse, so it's the fallback when Beatport finds nothing.
  */
-export function metadataSources(): Set<"beatport" | "soundcloud"> {
+export function metadataSources(): Set<MetadataSource> {
   const raw = (process.env.SPOTIFY_DISCOVERY_METADATA ?? "off").toLowerCase();
-  const out = new Set<"beatport" | "soundcloud">();
+  const out = new Set<MetadataSource>();
   if (raw === "off" || raw === "none") return out;
-  for (const s of raw.split(/[\s,]+/)) if (s === "beatport" || s === "soundcloud") out.add(s);
+  for (const s of raw.split(/[\s,]+/)) if (s === "beatport" || s === "soundcloud" || s === "deezer") out.add(s);
   return out;
 }
 

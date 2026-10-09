@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { artistMatches, labelFromCopyrights, labelKey, sameLabel, titleKey, titleMatches, trackKey, spotifyTrackKey } from "../src/discovery/keys.js";
 import { applyPickRules, type PickInput } from "../src/discovery/rules.js";
 import { bestMatch, parseCandidatesText, searchLadder } from "../src/discovery/verify.js";
-import { beatportMeta, fitsLane, metaLine, parseBeatport, parseSoundcloud, scTags } from "../src/metadata/lookup.js";
+import { beatportMeta, deezerLookup, fitsLane, genreLookup, metaLine, parseBeatport, parseSoundcloud, scTags } from "../src/metadata/lookup.js";
 import type { Track } from "../src/spotify/client.js";
 
 describe("keys", () => {
@@ -159,6 +159,83 @@ describe("metadata parsing", () => {
     expect(fitsLane({ from: "beatport", genre: "Hip-Hop" }, { genres: [], tags: [] })).toBeUndefined();
     expect(fitsLane(null, lane)).toBeUndefined();
     expect(metaLine({ from: "beatport", genre: "Drum & Bass", bpm: 174, key: "G Minor" })).toBe("Beatport: Drum & Bass · 174 BPM · G Minor");
+  });
+});
+
+/** A stand-in for api.deezer.com: JSON by path. Unknown paths get Deezer's 200-with-error body. */
+function deezerFake(routes: Record<string, unknown>, calls: string[] = []) {
+  return async (url: string | URL | Request, _init?: RequestInit): Promise<Response> => {
+    const u = new URL(String(url));
+    calls.push(u.pathname + u.search);
+    if (u.hostname !== "api.deezer.com") return new Response("not found", { status: 404 });
+    const hit = routes[u.pathname === "/search" ? `search:${u.searchParams.get("q")}` : u.pathname];
+    return Response.json(hit ?? { error: { type: "DataException", message: "no data", code: 800 } });
+  };
+}
+
+const FITTS = { artist: "Lily Fitts, Michael Marcagi", artists: ["Lily Fitts", "Michael Marcagi"], title: "Take Me Down (feat. Michael Marcagi)", label: "Mom+Pop", isrc: "USQE92600217" };
+const FOLK_ALBUM = { label: "Mom+Pop Music", genres: { data: [{ id: 84, name: "Folk" }] } };
+
+describe("Deezer lookup", () => {
+  it("reads an album's genres by ISRC", async () => {
+    const calls: string[] = [];
+    const f = deezerFake({ "/track/isrc:USQE92600217": { title: "Take Me Down", album: { id: 7 } }, "/album/7": FOLK_ALBUM }, calls);
+    expect(await deezerLookup(f, FITTS)).toEqual({ from: "deezer", genre: "Folk", genres: ["Folk"], label: "Mom+Pop Music" });
+    expect(calls).toEqual(["/track/isrc:USQE92600217", "/album/7"]);
+  });
+
+  it("falls back to searching, and wants the artist, title and label to agree", async () => {
+    const noIsrc = { ...FITTS, isrc: undefined };
+    const hit = { title: "Take Me Down", artist: { name: "Lily Fitts" }, album: { id: 7 } };
+    const other = { title: "Take Me Down", artist: { name: "Someone Else" }, album: { id: 9 } };
+    const q = "search:Lily Fitts Take Me Down (feat. Michael Marcagi)";
+    expect(await deezerLookup(deezerFake({ [q]: { data: [other, hit] }, "/album/7": FOLK_ALBUM, "/album/9": FOLK_ALBUM }), noIsrc)).toMatchObject({ genres: ["Folk"] });
+    expect(await deezerLookup(deezerFake({ [q]: { data: [other] }, "/album/9": FOLK_ALBUM }), noIsrc)).toBeNull();
+    // a same-named act on another label is not this track
+    expect(await deezerLookup(deezerFake({ [q]: { data: [hit] }, "/album/7": { ...FOLK_ALBUM, label: "Other Records" } }), noIsrc)).toBeNull();
+  });
+
+  it("keeps every genre, drops Deezer's placeholders, and fails open", async () => {
+    const album = { label: "L", genres: { data: [{ name: "Alternative" }, { name: "Indie Rock" }, { name: "All" }, { name: "Alternative" }] } };
+    const f = deezerFake({ "/track/isrc:X1": { album: { id: 1 } }, "/album/1": album, "/track/isrc:X2": { album: { id: 2 } }, "/album/2": { label: "L", genres: { data: [{ name: "All" }] } } });
+    expect(await deezerLookup(f, { ...FITTS, isrc: "X1" })).toMatchObject({ genre: "Alternative", genres: ["Alternative", "Indie Rock"] });
+    expect(await deezerLookup(f, { ...FITTS, isrc: "X2" })).toBeNull();
+    expect(await deezerLookup(async () => { throw new Error("down"); }, FITTS).catch(() => "threw")).toBeNull();
+    expect(await deezerLookup(async () => new Response("<html>", { status: 200 }), { ...FITTS, isrc: undefined })).toBeNull();
+  });
+
+  it("is only tried when Beatport is off or finds nothing", async () => {
+    const calls: string[] = [];
+    const f = deezerFake({ "/track/isrc:USQE92600217": { album: { id: 7 } }, "/album/7": FOLK_ALBUM }, calls);
+    const beatportMiss = async (url: string | URL | Request, init?: RequestInit) => (String(url).includes("beatport.com") ? new Response("<html></html>", { status: 200 }) : f(url, init));
+    expect((await genreLookup(beatportMiss, new Set(["beatport", "deezer"]), FITTS))?.from).toBe("deezer");
+    expect(await genreLookup(beatportMiss, new Set(["beatport"]), FITTS)).toBeNull();
+    expect((await genreLookup(f, new Set(["deezer"]), FITTS))?.from).toBe("deezer");
+    expect(await genreLookup(f, new Set(), FITTS)).toBeNull();
+    const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { dehydratedState: { queries: [{ state: { data: { data: [{ track_name: "Take Me Down", artists: [{ artist_name: "Lily Fitts" }], genre: [{ genre_name: "Indie Dance" }] }] } } }] } } } })}</script>`;
+    calls.length = 0;
+    const beatportHit = async (url: string | URL | Request, init?: RequestInit) => (String(url).includes("beatport.com") ? new Response(html, { status: 200 }) : f(url, init));
+    expect((await genreLookup(beatportHit, new Set(["beatport", "deezer"]), FITTS))?.from).toBe("beatport");
+    expect(calls).toEqual([]);
+  });
+
+  it("flags only genres that can't be electronic", () => {
+    const lane = { genres: ["Indie Dance", "Electronica", "Dance / Pop"], tags: ["indie", "synth-pop"] };
+    const d = (...genres: string[]) => ({ from: "deezer" as const, genre: genres[0], genres });
+    expect(fitsLane(d("Folk"), lane)).toBe(false);
+    expect(fitsLane(d("Folk", "Rock"), lane)).toBe(false);
+    expect(fitsLane(d("Electro"), lane)).toBe(true); // "Electronica" starts with "Electro"
+    expect(fitsLane(d("Dance"), lane)).toBe(true);
+    expect(fitsLane(d("Alternative", "Indie Rock"), lane)).toBe(true); // lane tag "indie"
+    expect(fitsLane(d("Pop"), lane)).toBeUndefined(); // could be synth-pop; the model decides
+    expect(fitsLane(d("Folk", "Pop"), lane)).toBeUndefined();
+    expect(fitsLane(d("Electro"), { genres: ["Drum & Bass"], tags: ["neurofunk"] })).toBeUndefined();
+    expect(fitsLane(d("Jazz"), { genres: ["Drum & Bass"], tags: ["neurofunk"] })).toBe(false);
+  });
+
+  it("shows up to three genres", () => {
+    expect(metaLine({ from: "deezer", genre: "Folk", genres: ["Folk"] })).toBe("Deezer: Folk");
+    expect(metaLine({ from: "deezer", genre: "A", genres: ["A", "B", "C", "D"] })).toBe("Deezer: A, B, C");
   });
 });
 

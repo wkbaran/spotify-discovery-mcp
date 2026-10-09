@@ -1,14 +1,14 @@
 import { request } from "node:https";
-import { METADATA_UA } from "../config.js";
+import { METADATA_UA, type MetadataSource } from "../config.js";
 import type { FetchLike } from "../auth/tokens.js";
 import { artistMatches, sameLabel, titleMatches } from "../discovery/keys.js";
 import type { Meta } from "../discovery/state.js";
 
 /**
- * Genre, BPM and key from Beatport's search page or a SoundCloud track page.
- * Both embed their data as JSON in the HTML; there's no open API. Everything
- * here fails open: any error, timeout or unexpected shape means "no metadata".
- * See docs/metadata-sources.md.
+ * Genre, BPM and key from Beatport's search page or a SoundCloud track page,
+ * which embed their data as JSON in the HTML (there's no open API), and album
+ * genres from Deezer's official API. Everything here fails open: any error,
+ * timeout or unexpected shape means "no metadata". See docs/metadata-sources.md.
  */
 
 const TIMEOUT_MS = 10_000;
@@ -143,20 +143,81 @@ export async function soundcloudLookup(fetchImpl: FetchLike, url: string): Promi
   return { from: "soundcloud", genre: s.genre || undefined, tags: scTags(s.tag_list), label: s.label_name || undefined, url };
 }
 
+interface DeezerTrack {
+  title?: string;
+  isrc?: string;
+  artist?: { name?: string };
+  album?: { id?: number };
+}
+
+/** Deezer reports an unknown genre as "All" or "N/A". */
+const DEEZER_NO_GENRE = /^(all|n\/a|unknown|no genre)$/i;
+
+async function deezerJson<T>(fetchImpl: FetchLike, url: string): Promise<T | null> {
+  const body = await getHtml(fetchImpl, url);
+  if (!body) return null;
+  try {
+    const j = JSON.parse(body) as T & { error?: unknown };
+    return j && typeof j === "object" && !j.error ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The album genres Deezer lists for a track, by ISRC when we have one (an exact match), else by
+ * searching artist and title, which also has to agree with the Spotify label. Deezer's genres are
+ * coarse ("Folk", "Alternative", "Electro"), so this is the fallback for tracks Beatport doesn't have.
+ */
+export async function deezerLookup(fetchImpl: FetchLike, q: { isrc?: string; artist: string; artists: string[]; title: string; label?: string }): Promise<Meta | null> {
+  let track = q.isrc ? await deezerJson<DeezerTrack>(fetchImpl, `https://api.deezer.com/track/isrc:${encodeURIComponent(q.isrc)}`) : null;
+  const byIsrc = !!track?.album?.id;
+  if (!byIsrc) {
+    const found = await deezerJson<{ data?: DeezerTrack[] }>(fetchImpl, `https://api.deezer.com/search?limit=10&q=${encodeURIComponent(`${q.artists[0] ?? q.artist} ${q.title}`)}`);
+    track = (found?.data ?? []).find((t) => t.artist?.name && t.title && t.album?.id && (artistMatches(q.artist, [t.artist.name]) || q.artists.some((a) => artistMatches(a, [t.artist!.name!]))) && titleMatches(t.title, q.title)) ?? null;
+  }
+  if (!track?.album?.id) return null;
+  const album = await deezerJson<{ label?: string; genres?: { data?: { name?: string }[] } }>(fetchImpl, `https://api.deezer.com/album/${track.album.id}`);
+  if (!album) return null;
+  if (!byIsrc && q.label && album.label && !sameLabel(album.label, q.label)) return null;
+  const genres = [...new Set((album.genres?.data ?? []).map((g) => g.name?.trim() ?? "").filter((n) => n && !DEEZER_NO_GENRE.test(n)))];
+  return genres.length ? { from: "deezer", genre: genres[0], genres, label: album.label || undefined } : null;
+}
+
+/** Beatport first (it has genre, BPM and key); Deezer only when Beatport is off or finds nothing. */
+export async function genreLookup(
+  fetchImpl: FetchLike,
+  sources: Set<MetadataSource>,
+  t: { isrc?: string; artist: string; artists: string[]; title: string; label?: string },
+): Promise<Meta | null> {
+  const bp = sources.has("beatport") ? await beatportLookup(fetchImpl, t).catch(() => null) : null;
+  return bp ?? (sources.has("deezer") ? await deezerLookup(fetchImpl, t).catch(() => null) : null);
+}
+
+/** Deezer genres that could still be electronic or electronic-adjacent; its coarse labels can't rule these out. */
+const DEEZER_AMBIGUOUS = /^(electro|dance|pop|alternative|r&b|soul|rap|hip)/i;
+
 /** Does this metadata put the track in the lane? Undefined when the lane lists no genres or tags, or there's nothing to judge by. */
 export function fitsLane(meta: Meta | null | undefined, lane: { genres: string[]; tags: string[] }): boolean | undefined {
   if (!meta || (!lane.genres.length && !lane.tags.length)) return undefined;
-  const words = [meta.genre ?? "", ...(meta.tags ?? [])].join(" ").toLowerCase();
+  const genres = meta.genres?.length ? meta.genres : meta.genre ? [meta.genre] : [];
+  const words = [...genres, ...(meta.tags ?? [])].join(" ").toLowerCase();
   if (!words.trim()) return undefined;
-  if (meta.genre && lane.genres.some((g) => meta.genre!.toLowerCase().startsWith(g.toLowerCase()))) return true;
+  if (genres.some((x) => lane.genres.some((g) => x.toLowerCase().startsWith(g.toLowerCase())))) return true;
   if (lane.tags.some((t) => words.includes(t.toLowerCase()))) return true;
+  if (meta.from === "deezer") {
+    // Deezer's names are coarser than Beatport's ("Electro", "Dance"), so a lane's "Electronica" or "Dance / Pop" matches by either prefix.
+    if (genres.some((x) => lane.genres.some((g) => g.toLowerCase().startsWith(x.toLowerCase())))) return true;
+    // Only call it outside the lane when none of its genres could be electronic: "Folk" can't, "Pop" or "Alternative" might.
+    if (genres.some((x) => DEEZER_AMBIGUOUS.test(x))) return undefined;
+  }
   return false;
 }
 
 /** "Beatport: Drum & Bass · 174 BPM · G Minor" */
 export function metaLine(meta: Meta | null | undefined): string {
   if (!meta) return "";
-  const src = meta.from === "beatport" ? "Beatport" : "SoundCloud";
-  const parts = [meta.genre, meta.bpm ? `${Math.round(meta.bpm)} BPM` : undefined, meta.key, meta.tags?.length ? `tags: ${meta.tags.slice(0, 5).join(", ")}` : undefined].filter(Boolean);
+  const src = meta.from === "beatport" ? "Beatport" : meta.from === "deezer" ? "Deezer" : "SoundCloud";
+  const parts = [meta.genres?.length ? meta.genres.slice(0, 3).join(", ") : meta.genre, meta.bpm ? `${Math.round(meta.bpm)} BPM` : undefined, meta.key, meta.tags?.length ? `tags: ${meta.tags.slice(0, 5).join(", ")}` : undefined].filter(Boolean);
   return parts.length ? `${src}: ${parts.join(" · ")}` : "";
 }

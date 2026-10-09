@@ -174,7 +174,7 @@ The reports reach Discord through a no-model job instead, because copying a long
 | `SPOTIFY_DISCOVERY_DIR` | (required) | The data directory |
 | `SPOTIFY_DISCOVERY_AUTH` | `$SPOTIFY_DISCOVERY_DIR/auth.json` | The token file |
 | `SPOTIFY_DISCOVERY_TZ` | `lanes.json`'s `timezone` | Which day "today" is |
-| `SPOTIFY_DISCOVERY_METADATA` | `off` | Where to look up genre: `beatport`, `soundcloud` or both. Off by default because both are scraped pages, not open APIs, and their terms don't allow it. If you turn it on, keep it light, and let a blocked lookup fail |
+| `SPOTIFY_DISCOVERY_METADATA` | `off` | Where to look up genre: any of `beatport`, `soundcloud` and `deezer`, comma-separated. Off by default. Beatport and SoundCloud are scraped pages, not open APIs, and their terms don't allow it; if you turn them on, keep it light, and let a blocked lookup fail. Deezer is an official API that needs no key. It is tried only when Beatport is off or finds nothing, and its genres are coarse (`Folk`, `Alternative`, `Electro`), so it flags a track as outside the lane only when none of its genres could be electronic |
 
 ## Tools
 

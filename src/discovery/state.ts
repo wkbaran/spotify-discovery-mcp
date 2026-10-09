@@ -1,10 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { insideDir, readJson, RunStore, updateJson } from "job-ledger";
 
-/** Genre and tempo from Beatport or SoundCloud. */
+/** Genre and tempo from Beatport, SoundCloud or Deezer. */
 export interface Meta {
-  from: "beatport" | "soundcloud";
+  from: "beatport" | "soundcloud" | "deezer";
   genre?: string;
+  /** Every genre Deezer lists for the album; `genre` is the first. */
+  genres?: string[];
   bpm?: number;
   key?: string;
   label?: string;

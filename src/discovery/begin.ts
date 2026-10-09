@@ -1,6 +1,7 @@
 import { isoSeconds, localDate, textKey } from "job-ledger";
 import type { FetchLike } from "../auth/tokens.js";
-import { beatportLookup, fitsLane } from "../metadata/lookup.js";
+import type { MetadataSource } from "../config.js";
+import { fitsLane, genreLookup } from "../metadata/lookup.js";
 import { playlistUrl, rethrowRateLimit, type SpotifyClient, type Track } from "../spotify/client.js";
 import { addDays, collectFeed, labelSources, type FeedRelease } from "./feed.js";
 import { labelKey, releaseDay, splitArtists, spotifyTrackKey } from "./keys.js";
@@ -12,9 +13,9 @@ import { findOnSpotify } from "./verify.js";
 export interface Ctx {
   client: SpotifyClient;
   dir: string;
-  /** For Beatport and SoundCloud pages. */
+  /** For the Beatport, SoundCloud and Deezer lookups. */
   fetchImpl: FetchLike;
-  metadata: Set<"beatport" | "soundcloud">;
+  metadata: Set<MetadataSource>;
   now?: () => Date;
 }
 
@@ -166,13 +167,13 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
   }
 
   // 4. Genre for what's shown (fail-open, a bounded number of lookups).
-  if (ctx.metadata.has("beatport")) {
+  if (ctx.metadata.has("beatport") || ctx.metadata.has("deezer")) {
     // One track per release first, so every release gets a genre line; then the rest.
     const firsts = [...order.feed.map((r) => (groups[r] ? groups[r]![0]! : r)), ...order.carried];
     const rest = Object.keys(items).filter((r) => !firsts.includes(r));
     const todo = [...firsts, ...rest].map((r) => items[r]!).filter((i) => i.meta === undefined).slice(0, MAX_META_LOOKUPS);
     await mapLimit(todo, 3, async (i) => {
-      i.meta = await beatportLookup(ctx.fetchImpl, { artist: i.artist, artists: i.artists, title: i.title, label: i.label }).catch(() => null);
+      i.meta = await genreLookup(ctx.fetchImpl, ctx.metadata, i);
       i.fit = fitsLane(i.meta, lane);
     });
   }

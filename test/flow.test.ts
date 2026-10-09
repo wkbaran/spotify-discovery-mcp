@@ -29,8 +29,8 @@ const LANES = {
   },
 };
 
-async function connect() {
-  const server = createServer({ dir, client: new SpotifyClient({ token: async () => "t" }, spotify.fetch, "https://api.spotify.com/v1", async () => {}), fetchImpl: spotify.fetch, now: () => now });
+async function connect(pageFetch?: (url: string | URL | Request) => Promise<Response>) {
+  const server = createServer({ dir, client: new SpotifyClient({ token: async () => "t" }, spotify.fetch, "https://api.spotify.com/v1", async () => {}), fetchImpl: spotify.fetch, pageFetch, now: () => now });
   const client = new Client({ name: "test", version: "1" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(a), client.connect(b)]);
@@ -155,6 +155,37 @@ describe("a lane run", () => {
     expect(next.text).toMatch(/C\d+ {2}Sully — Flux .*\[passed 1×\]/);
     expect(next.text).not.toContain("Sully — Chatter");
     expect(next.text).toMatch(/K\d+ {2}Skrimor — Kraken - VIP/); // Skrimor was learned from the pick
+  });
+
+  it("shows Deezer's genre for feed releases Beatport doesn't have, and flags one outside the lane", async () => {
+    process.env.SPOTIFY_DISCOVERY_METADATA = "beatport,deezer";
+    const seen: string[] = [];
+    const client = await connect(async (url) => {
+      const u = new URL(String(url));
+      seen.push(u.hostname);
+      if (u.hostname === "www.beatport.com") return new Response("<html></html>", { status: 200 });
+      if (u.pathname === "/search") {
+        // Feed tracks have no ISRC, so Deezer is searched by artist and title ("Sully Chatter").
+        const [artist, ...title] = (u.searchParams.get("q") ?? "").split(" ");
+        return Response.json({ data: [{ title: title.join(" "), artist: { name: artist }, album: { id: 5 } }] });
+      }
+      if (u.pathname === "/album/5") return Response.json({ label: "Critical Music", genres: { data: [{ name: "Folk" }] } });
+      return Response.json({ error: { code: 800 } });
+    });
+    const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(begin.isError).toBe(false);
+    expect(begin.text).toMatch(/Sully — Chatter[^\n]*\n\s+Deezer: Folk {2}⚠ genre outside this lane/);
+    expect(seen).toContain("www.beatport.com");
+    expect(seen).toContain("api.deezer.com");
+  });
+
+  it("carries on without a genre line when Deezer is down", async () => {
+    process.env.SPOTIFY_DISCOVERY_METADATA = "deezer";
+    const client = await connect(async () => new Response("bad gateway", { status: 502 }));
+    const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(begin.isError).toBe(false);
+    expect(begin.text).toMatch(/Sully — Chatter/);
+    expect(begin.text).not.toContain("Deezer:");
   });
 
   it("drops picks over the limits from the end and says so", async () => {

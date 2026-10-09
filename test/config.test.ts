@@ -17,4 +17,9 @@ describe("metadataSources", () => {
     process.env.SPOTIFY_DISCOVERY_METADATA = "beatport, soundcloud";
     expect([...metadataSources()].sort()).toEqual(["beatport", "soundcloud"]);
   });
+
+  it("accepts Deezer, and ignores names it doesn't know", () => {
+    process.env.SPOTIFY_DISCOVERY_METADATA = "beatport,deezer,musicbrainz";
+    expect([...metadataSources()].sort()).toEqual(["beatport", "deezer"]);
+  });
 });

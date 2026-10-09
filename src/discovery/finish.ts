@@ -1,5 +1,5 @@
 import { cleanRef, isoSeconds, laterIso, localDate, resolveRefs, textKey } from "job-ledger";
-import { fitsLane, beatportLookup, soundcloudLookup } from "../metadata/lookup.js";
+import { fitsLane, genreLookup, soundcloudLookup } from "../metadata/lookup.js";
 import { rethrowRateLimit } from "../spotify/client.js";
 import { addDays } from "./feed.js";
 import { labelKey, spotifyTrackKey, trackKey } from "./keys.js";
@@ -83,7 +83,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
     }
     if (item.status === "ok") {
       const sc = ctx.metadata.has("soundcloud") && c.source_url ? await soundcloudLookup(ctx.fetchImpl, c.source_url).catch(() => null) : null;
-      item.meta = sc ?? (ctx.metadata.has("beatport") ? await beatportLookup(ctx.fetchImpl, { artist: item.artist, artists: item.artists, title: item.title, label: item.label }).catch(() => null) : null);
+      item.meta = sc ?? (await genreLookup(ctx.fetchImpl, ctx.metadata, item));
       item.fit = fitsLane(item.meta, lane);
     }
     run.items[ref] = item;
