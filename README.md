@@ -4,7 +4,7 @@
 
 **A Spotify discovery playlist run by a scheduled agent, where the model only has to judge the music.**
 
-![Node 26+](https://img.shields.io/badge/node-26%2B-339933?logo=nodedotjs&logoColor=white)
+![npm](https://img.shields.io/npm/v/spotify-discovery-mcp) ![Node 26+](https://img.shields.io/badge/node-26%2B-339933?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio-6E56CF)
 ![Tools](https://img.shields.io/badge/tools-7-informational)
@@ -112,22 +112,22 @@ When research turns up a new label, `discovery_finish` saves it to that lane as 
 
 ## Setup
 
-### 1. Build
+### 1. Install
 
 ```sh
-npm install
-npm test
-npm run build      # bundles everything into dist/cli.js; nothing to install on the host
+npm install -g spotify-discovery-mcp   # one bundled file, no dependencies
 ```
+
+From source instead: clone the repo, then `npm install && npm test && npm run build` (it bundles everything into `dist/cli.js`), and use `node dist/cli.js` in place of `spotify-discovery-mcp`.
 
 ### 2. Log in to Spotify
 
 The server has its own login and refresh token, so it can't invalidate another client's (Hermes's own Spotify tools, for example). Spotify gives new Development Mode apps one client id per developer, so use the app you already have, and register its redirect URI if it isn't there yet.
 
 ```sh
-SPOTIFY_DISCOVERY_AUTH=./auth.json node dist/cli.js login --client-id <your app's client id>
+SPOTIFY_DISCOVERY_AUTH=./auth.json spotify-discovery-mcp login --client-id <your app's client id>
 # headless, or when the browser can't reach 127.0.0.1:
-SPOTIFY_DISCOVERY_AUTH=./auth.json node dist/cli.js login --client-id <id> --paste
+SPOTIFY_DISCOVERY_AUTH=./auth.json spotify-discovery-mcp login --client-id <id> --paste
 ```
 
 The default redirect URI is `http://127.0.0.1:43827/spotify/callback`; change it with `--redirect-uri`. The token file is written with mode 0600. Copy it to the host, to `SPOTIFY_DISCOVERY_AUTH` or `$SPOTIFY_DISCOVERY_DIR/auth.json`.
@@ -140,9 +140,9 @@ The default redirect URI is `http://127.0.0.1:43827/spotify/callback`; change it
 - `taste_profile.json`: optional; `core_artists` from your listening, for `max_core_picks`.
 - The state the server writes: `history.json`, `days.json`, `lanes/<lane>.json`, `runs/`.
 
-To carry over what the old jobs recommended, run `node dist/cli.js import <old dir>` once. It reads `recommendation_history.json` and `today_playlist.json`.
+To carry over what the old jobs recommended, run `spotify-discovery-mcp import <old dir>` once. It reads `recommendation_history.json` and `today_playlist.json`.
 
-`node dist/cli.js status` checks the login and shows each lane.
+`spotify-discovery-mcp status` checks the login and shows each lane.
 
 ### 4. Hermes
 
