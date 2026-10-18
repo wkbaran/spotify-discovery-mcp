@@ -12,7 +12,9 @@
     "carry_days": 21,
     "max_age_days": 365,
     "pending_days": 42,
-    "quiet_runs": 8
+    "quiet_runs": 8,
+    "feed_requests": 60,
+    "feed_tracks": 18
   },
   "lanes": {
     "a-dnb": {
