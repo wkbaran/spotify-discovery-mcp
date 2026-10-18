@@ -9,7 +9,7 @@
 ![MCP](https://img.shields.io/badge/MCP-stdio-6E56CF)
 ![Tools](https://img.shields.io/badge/tools-7-informational)
 ![Spotify](https://img.shields.io/badge/Spotify-Web%20API-1DB954?logo=spotify&logoColor=white)
-![Hermes Agent](https://img.shields.io/badge/runs%20on-Hermes%20Agent-orange)
+![Hermes Agent](https://img.shields.io/badge/Hermes%20Agent-skill%20included-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
 [Why](#why) · [How a lane run works](#how-a-lane-run-works) · [Pick rules](#where-picks-come-from-and-how-theyre-mixed) · [Setup](#setup) · [Tools](#tools) · [Spotify API notes](#spotify-api-notes)
@@ -43,8 +43,8 @@ Each step is done either by **code** (this server) or by the **model**.
 | 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered, and hands its finds straight to `verify_tracks(lane, text)`. The server checks each one on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
 | 3 | `discovery_review(lane)` | code | Lists everything pickable in the run from the server's own records: verified web finds with their reasons, then the feed |
 | 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state and the report, and returns a one-line summary of what was added |
-| 5 | Reply | model | One line, `Done: a-dnb`. The lane job itself delivers nothing (`deliver: local`) |
-| 6 | `spotify-discovery-mcp report` | code (a no-model cron job) | Prints each finished lane report once, plus a warning for a run that never finished. Hermes posts the output to Discord |
+| 5 | Reply | model | One line, `Done: a-dnb`. The lane run itself delivers nothing (in Hermes, `deliver: local`) |
+| 6 | `spotify-discovery-mcp report` | code (a no-model cron job) | Prints each finished lane report once, plus a warning for a run that never finished. The scheduler posts the output (to Discord, say) |
 
 The research never passes through the main model. On 2026-10-03 the first live run had Qwen copy the subagent's reply into `verify_tracks`; it mangled the JSON escaping four times, and the run ran out of road before finishing. Now the subagent calls `verify_tracks` itself and returns only "DONE".
 
@@ -135,7 +135,7 @@ From source instead: clone the repo, then `npm install && npm test && npm run bu
 
 ### 2. Log in to Spotify
 
-The server has its own login and refresh token, so it can't invalidate another client's (Hermes's own Spotify tools, for example). Spotify gives new Development Mode apps one client id per developer, so use the app you already have, and register its redirect URI if it isn't there yet.
+The server has its own login and refresh token, so it can't invalidate another client's (Hermes's own Spotify tools, if you use them). Spotify gives new Development Mode apps one client id per developer, so use the app you already have, and register its redirect URI if it isn't there yet.
 
 ```sh
 SPOTIFY_DISCOVERY_AUTH=./auth.json spotify-discovery-mcp login --client-id <your app's client id>
@@ -157,9 +157,11 @@ To carry over what the old jobs recommended, run `spotify-discovery-mcp import <
 
 `spotify-discovery-mcp status` checks the login and shows each lane.
 
-### 4. Hermes
+### 4. Running the lanes
 
-In `config.yaml`:
+[spotify-discovery](https://github.com/wkbaran/spotify-discovery) is a standalone scheduled job that runs the lanes against this server; its README covers setup. That's how I run it.
+
+To run the lanes on [Hermes Agent](https://github.com/NousResearch/hermes-agent) instead, add the server to `config.yaml`:
 
 ```yaml
 mcp_servers:

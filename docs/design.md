@@ -149,7 +149,7 @@ Spotify no longer exposes genres, so the server can't decide which lane a liked 
 
 ## Setup
 
-The planned setup steps:
+The setup steps as planned for the original Hermes deployment (the README has the current setup):
 
 1. On the Spotify app, register the redirect URI (probably the one Hermes already uses).
 2. `spotify-discovery-mcp login`: PKCE in a browser, which saves `auth.json` to `SPOTIFY_DISCOVERY_AUTH` (default `$SPOTIFY_DISCOVERY_DIR/auth.json`, mode 0600). On a headless host, log in locally and copy the file over.
