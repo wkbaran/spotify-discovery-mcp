@@ -9,7 +9,7 @@
     "max_core_picks": 2,
     "min_web_picks": 0,
     "feed_cap": 25,
-    "carry_runs": 4,
+    "carry_days": 21,
     "max_age_days": 365,
     "pending_days": 42,
     "quiet_runs": 8

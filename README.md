@@ -97,11 +97,11 @@ With `max_core_picks: 2`, only the first 2 of those (in the model's order) are k
 
 ### Nothing good is lost
 
-The feed is fetched by date ("released since this lane's last run"), but **the candidates themselves are kept in a pool, which isn't date-based**. Unpicked candidates come back on later runs, marked with how often they've been passed over, until one of these happens:
+The feed is fetched by date ("released since this source was last checked"), but **the candidates themselves are kept in a pool, which isn't date-based**. Unpicked candidates come back on later runs, marked with how often they've been passed over, until one of these happens:
 
 - they're picked,
 - the model rejects them outright (at most 3 per run, so a model that rejects everything it didn't pick can't empty the pool),
-- they've been passed over `carry_runs` times,
+- they've been in the pool `carry_days` days (default 21, counted from when they were first shown, so it means the same however often the lanes run; before 0.5.0 it was `carry_runs`, a number of runs),
 - they're older than `max_age_days`.
 
 Web finds that verified but weren't picked go into the same pool. Web finds that **aren't on Spotify yet** (an album due out in three weeks, a release out that morning) are kept as *pending*. Each run checks them quietly, and they join the pool once they appear.

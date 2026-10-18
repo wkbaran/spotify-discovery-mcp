@@ -166,7 +166,7 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
   const expiredBefore = addDays(day, -lane.max_age_days);
   const carried = Object.values(state.pool)
     .filter((p) => {
-      if (p.passes >= lane.carry_runs || releaseDay(p.released) < expiredBefore) {
+      if (addDays(p.first_seen, lane.carry_days) < day || releaseDay(p.released) < expiredBefore) {
         effects.expired.push(p.key);
         return false;
       }

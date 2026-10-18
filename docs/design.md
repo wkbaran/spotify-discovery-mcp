@@ -104,7 +104,7 @@ Your settings and the learned state are separate files on purpose. You can edit 
 {
   "playlist": { "name": "{YYMMDD}", "description": "Discovery playlist auto-curated from your listening profile" },
   "defaults": { "target": [3, 6], "max_feed_picks": 3, "max_core_picks": 2, "min_web_picks": 0,
-                "feed_cap": 25, "carry_runs": 4, "max_age_days": 365, "pending_days": 42, "quiet_runs": 8,
+                "feed_cap": 25, "carry_days": 21, "max_age_days": 365, "pending_days": 42, "quiet_runs": 8,
                 "feed_requests": 60, "feed_tracks": 18 },
   "lanes": {
     "a-dnb": {

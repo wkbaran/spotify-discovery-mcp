@@ -8,7 +8,7 @@ const limits = {
   max_core_picks: z.number().int().min(0).max(20),
   min_web_picks: z.number().int().min(0).max(20),
   feed_cap: z.number().int().min(1).max(60),
-  carry_runs: z.number().int().min(1).max(20),
+  carry_days: z.number().int().min(1).max(365),
   max_age_days: z.number().int().min(7).max(3650),
   pending_days: z.number().int().min(1).max(180),
   quiet_runs: z.number().int().min(2).max(100),
@@ -22,7 +22,7 @@ export const DEFAULTS = {
   max_core_picks: 2,
   min_web_picks: 0,
   feed_cap: 25,
-  carry_runs: 4,
+  carry_days: 21,
   max_age_days: 365,
   pending_days: 42,
   quiet_runs: 8,
@@ -71,7 +71,8 @@ export interface Lane {
   max_core_picks: number;
   min_web_picks: number;
   feed_cap: number;
-  carry_runs: number;
+  /** Days an unpicked track stays in the pool (counted from when it was first shown), however often the lane runs. */
+  carry_days: number;
   max_age_days: number;
   pending_days: number;
   quiet_runs: number;
@@ -107,6 +108,9 @@ export async function loadLanes(dir: string): Promise<LanesFile> {
   const tz = discoveryTimezone();
   // stdout is the MCP channel; stderr is where hosts show server logs.
   if (tz.warning) console.error(tz.warning);
+  // carry_runs (before 0.5.0) counted runs, so its meaning changed with the schedule; carry_days replaced it.
+  const raw = loaded.value as { defaults?: object; lanes?: Record<string, object> };
+  if ([raw.defaults, ...Object.values(raw.lanes ?? {})].some((o) => o && "carry_runs" in o)) console.error(`lanes.json: "carry_runs" is ignored since 0.5.0; use "carry_days" (default ${DEFAULTS.carry_days}).`);
   if (f.timezone && f.timezone !== tz.timeZone) console.error(`lanes.json's "timezone" (${f.timezone}) is ignored; set SPOTIFY_DISCOVERY_TZ or TZ instead. Using ${tz.timeZone}.`);
   return { timezone: tz.timeZone, playlist: f.playlist, lanes };
 }

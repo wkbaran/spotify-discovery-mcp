@@ -155,6 +155,28 @@ describe("a lane run", () => {
     expect(next.text).toMatch(/C\d+ {2}Sully — Flux .*\[passed 1×\]/);
     expect(next.text).not.toContain("Sully — Chatter");
     expect(next.text).toMatch(/K\d+ {2}Skrimor — Kraken - VIP/); // Skrimor was learned from the pick
+    expect(JSON.parse(await readFile(join(dir, "runs", (await readdir(join(dir, "runs"))).filter((f) => f.startsWith("a-dnb-")).sort().at(-1)!), "utf8")).requests_by_step).toMatchObject({ pending: expect.any(Number), feed: expect.any(Number) });
+  });
+
+  it("expires an unpicked track carry_days after it was first shown, however many runs passed", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb" });
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: [] });
+    // Day 21: still offered.
+    now = new Date("2026-10-23T15:00:00Z");
+    const stillThere = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(stillThere.text).toMatch(/C\d+ {2}Sully — Flux/);
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: [] });
+    // Day 22: expired and closed.
+    now = new Date("2026-10-24T15:00:00Z");
+    const gone = await call(client, "discovery_begin", { lane: "a-dnb" });
+    expect(gone.text).not.toContain("Sully — Flux");
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: [] });
+    const state = await readJson<LaneState>("lanes/a-dnb.json");
+    expect(state.closed["sully|flux"]).toMatchObject({ status: "expired" });
   });
 
   it("shows Deezer's genre for feed releases Beatport doesn't have, and flags one outside the lane", async () => {
