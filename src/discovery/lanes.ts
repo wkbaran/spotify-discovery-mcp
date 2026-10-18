@@ -1,6 +1,6 @@
 import { readJson } from "job-ledger";
 import { z } from "zod";
-import { timezoneOverride } from "../config.js";
+import { discoveryTimezone } from "../config.js";
 
 const limits = {
   target: z.tuple([z.number().int().min(0), z.number().int().min(1).max(20)]),
@@ -39,7 +39,8 @@ const laneSchema = z.object({
 });
 
 const fileSchema = z.object({
-  timezone: z.string().default("America/Denver"),
+  /** No longer used (0.4.0): the time zone comes from SPOTIFY_DISCOVERY_TZ or TZ. Accepted so older files still load. */
+  timezone: z.string().optional(),
   playlist: z
     .object({
       name: z.string().default("hermes{YYYYMMDD}"),
@@ -95,7 +96,11 @@ export async function loadLanes(dir: string): Promise<LanesFile> {
     if (merged.target[0] > merged.target[1]) throw new Error(`lanes.json: lanes.${id}.target: minimum is above maximum.`);
     lanes[id] = { ...merged, id };
   }
-  return { timezone: timezoneOverride() ?? f.timezone, playlist: f.playlist, lanes };
+  const tz = discoveryTimezone();
+  // stdout is the MCP channel; stderr is where hosts show server logs.
+  if (tz.warning) console.error(tz.warning);
+  if (f.timezone && f.timezone !== tz.timeZone) console.error(`lanes.json's "timezone" (${f.timezone}) is ignored; set SPOTIFY_DISCOVERY_TZ or TZ instead. Using ${tz.timeZone}.`);
+  return { timezone: tz.timeZone, playlist: f.playlist, lanes };
 }
 
 export function getLane(file: LanesFile, id: string): Lane {

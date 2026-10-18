@@ -15,7 +15,6 @@ let now: Date;
 const saved = { ...process.env };
 
 const LANES = {
-  timezone: "America/Denver",
   lanes: {
     "a-dnb": {
       name: "Neurofunk, techstep, and experimental DnB",
@@ -52,11 +51,12 @@ async function lastReport(lane: string): Promise<string> {
 
 beforeEach(async () => {
   process.env.SPOTIFY_DISCOVERY_METADATA = "off";
+  process.env.SPOTIFY_DISCOVERY_TZ = "America/New_York";
   dir = await mkdtemp(join(tmpdir(), "discovery-"));
   await writeFile(join(dir, "lanes.json"), JSON.stringify(LANES));
   await writeFile(join(dir, "taste_profile.json"), JSON.stringify({ core_artists: ["Omneum", "Skrimor"] }));
   await writeFile(join(dir, "history.json"), JSON.stringify({ tracks: [{ artist: "Sulphur", title: "Dat Luv", key: "sulphur|dat luv", lane: "legacy", date: "2026-09-18" }] }));
-  now = new Date("2026-10-02T15:00:00Z"); // 09:00 in Denver
+  now = new Date("2026-10-02T15:00:00Z"); // 11:00 in New York
   spotify = new FakeSpotify();
   spotify.addRelease({ artist: "Sully", title: "Flux / Chatter", tracks: ["Flux", "Chatter"], label: "Critical Music", date: "2026-09-26" });
   spotify.addRelease({ artist: "Neonlight", title: "Leaving Wonderland", tracks: ["LEAVING WONDERLAND"], label: "Eatbrain", date: "2026-09-25" });

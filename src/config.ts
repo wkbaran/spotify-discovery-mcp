@@ -26,9 +26,22 @@ export function authPath(): string {
   return dir ? join(dir, "auth.json") : join(homedir(), ".config", "spotify-discovery-mcp", "auth.json");
 }
 
-/** Overrides lanes.json's `timezone`. */
-export function timezoneOverride(): string | undefined {
-  return process.env.SPOTIFY_DISCOVERY_TZ || undefined;
+/**
+ * Which day "today" is, for playlist names and days.json: SPOTIFY_DISCOVERY_TZ,
+ * else TZ, else UTC. A name that isn't a time zone falls back to UTC with a warning.
+ */
+export function discoveryTimezone(env: NodeJS.ProcessEnv = process.env): { timeZone: string; warning?: string } {
+  for (const name of ["SPOTIFY_DISCOVERY_TZ", "TZ"] as const) {
+    const tz = env[name]?.trim();
+    if (!tz) continue;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return { timeZone: tz };
+    } catch {
+      return { timeZone: "UTC", warning: `${name}="${tz}" isn't a time zone name; using UTC.` };
+    }
+  }
+  return { timeZone: "UTC" };
 }
 
 export type MetadataSource = "beatport" | "soundcloud" | "deezer";

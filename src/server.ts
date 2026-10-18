@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { TokenSource, type FetchLike } from "./auth/tokens.js";
 import { authPath, discoveryDir, metadataSources } from "./config.js";
 import type { Ctx } from "./discovery/begin.js";
-import { httpsGet } from "./metadata/lookup.js";
+import { httpsGet, pacedMetadataFetch } from "./metadata/lookup.js";
 import { SpotifyClient } from "./spotify/client.js";
 import { registerTools, text } from "./tools.js";
 import { VERSION } from "./version.js";
@@ -29,9 +29,11 @@ export function createServer(opts: { dir?: string; fetchImpl?: FetchLike; pageFe
   }
   const fetchImpl = opts.fetchImpl ?? fetch;
   let client = opts.client;
+  // One paced fetch for the server's lifetime, so pacing holds across tool calls.
+  const pageFetch = opts.pageFetch ?? pacedMetadataFetch(httpsGet);
   const ctx = async (): Promise<Ctx> => {
     client ??= new SpotifyClient(new TokenSource(authPath(), fetchImpl), fetchImpl);
-    return { client, dir, fetchImpl: opts.pageFetch ?? httpsGet, metadata: metadataSources(), now: opts.now };
+    return { client, dir, fetchImpl: pageFetch, metadata: metadataSources(), now: opts.now };
   };
   registerTools(server, ctx, dir);
   return server;

@@ -173,8 +173,11 @@ The reports reach Discord through a no-model job instead, because copying a long
 |---|---|---|
 | `SPOTIFY_DISCOVERY_DIR` | (required) | The data directory |
 | `SPOTIFY_DISCOVERY_AUTH` | `$SPOTIFY_DISCOVERY_DIR/auth.json` | The token file |
-| `SPOTIFY_DISCOVERY_TZ` | `lanes.json`'s `timezone` | Which day "today" is |
+| `SPOTIFY_DISCOVERY_TZ` | `TZ`, else UTC | Which day "today" is, for the playlist name and the day's bookkeeping. `lanes.json`'s old `timezone` field is ignored |
 | `SPOTIFY_DISCOVERY_METADATA` | `off` | Where to look up genre: any of `beatport`, `soundcloud` and `deezer`, comma-separated. Off by default. Beatport and SoundCloud are scraped pages, not open APIs, and their terms don't allow it; if you turn them on, keep it light, and let a blocked lookup fail. Deezer is an official API that needs no key. It is tried only when Beatport is off or finds nothing, and its genres are coarse (`Folk`, `Alternative`, `Electro`), so it flags a track as outside the lane only when none of its genres could be electronic |
+| `SPOTIFY_DISCOVERY_RATE`, `_CONCURRENCY`, `_MIN_GAP` | none | Pacing of requests to the Spotify API, e.g. `60/min`, `2`, `250ms`. See [paced-fetch](https://github.com/wkbaran/paced-fetch) |
+| `SPOTIFY_DISCOVERY_RETRIES`, `_MAX_RETRY_WAIT` | `3`, `60s` | Retries after a 429 (or a 5xx on GET, PUT and DELETE; a POST such as adding tracks isn't sent twice), waiting Spotify's `Retry-After`; a longer `Retry-After` (a quota block) fails at once and blocks every later request until it ends |
+| `SPOTIFY_DISCOVERY_METADATA_RATE`, `_CONCURRENCY`, `_MIN_GAP`, `_RETRIES`, `_MAX_RETRY_WAIT` | none, `2`, `250ms`, `1`, `10s` | The same for Beatport, SoundCloud and Deezer pages. Deezer is also held to its documented 50 requests per 5 s |
 
 ## Tools
 

@@ -23,7 +23,6 @@ const saved = { ...process.env };
 let dir: string;
 
 const LANES = {
-  timezone: "America/New_York",
   lanes: {
     "a-dnb": {
       name: "Neurofunk and techstep",
@@ -38,6 +37,7 @@ const LANES = {
 
 beforeEach(async () => {
   process.env.SPOTIFY_DISCOVERY_METADATA = "off";
+  process.env.SPOTIFY_DISCOVERY_TZ = "America/New_York";
   delete process.env.SPOTIFY_DISCOVERY_TZ;
   dir = await mkdtemp(join(tmpdir(), "discovery-"));
   await writeFile(join(dir, "lanes.json"), JSON.stringify(LANES, null, 2));

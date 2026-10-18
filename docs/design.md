@@ -18,7 +18,7 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
 
 ### `discovery_begin(lane)`
 
-1. **Finds or creates today's playlist.** It takes `days.json.lock`; if today has no playlist, it creates `hermes<YYYYMMDD>` (private) with `POST /me/playlists` and records it. "Today" uses `SPOTIFY_DISCOVERY_TZ` (default `America/Denver`).
+1. **Finds or creates today's playlist.** It takes `days.json.lock`; if today has no playlist, it creates `hermes<YYYYMMDD>` (private) with `POST /me/playlists` and records it. "Today" uses `SPOTIFY_DISCOVERY_TZ`, else `TZ`, else UTC.
 2. **Re-checks pending items** with exact searches; any that are now on Spotify join the pool.
 3. **Fetches the feed** for this lane since its `last_run`:
    - each label (seed, found and promoted): `label:"…" tag:new` album search, paged; if `last_run` is more than 13 days ago, `label:"…" year:…` filtered by `release_date`;
@@ -102,7 +102,6 @@ Your settings and the learned state are separate files on purpose. You can edit 
 
 ```jsonc
 {
-  "timezone": "America/Denver",
   "playlist": { "name": "hermes{YYYYMMDD}", "description": "Discovery playlist auto-curated from your listening profile" },
   "defaults": { "target": [3, 6], "max_feed_picks": 3, "max_core_picks": 2, "min_web_picks": 0,
                 "feed_cap": 25, "carry_runs": 4, "max_age_days": 365, "pending_days": 42, "quiet_runs": 8 },

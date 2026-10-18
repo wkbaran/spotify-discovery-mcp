@@ -1,4 +1,5 @@
 import { request } from "node:https";
+import { pacedFetch, paceFromEnv, type FetchLike as PacedFetchLike, type PaceOptions } from "paced-fetch";
 import { METADATA_UA, type MetadataSource } from "../config.js";
 import type { FetchLike } from "../auth/tokens.js";
 import { artistMatches, sameLabel, titleMatches } from "../discovery/keys.js";
@@ -11,18 +12,28 @@ import type { Meta } from "../discovery/state.js";
  * timeout or unexpected shape means "no metadata". See docs/metadata-sources.md.
  */
 
-const TIMEOUT_MS = 10_000;
+/**
+ * Pacing for the metadata sites, shared by all three: one retry, at most 10 s per
+ * page, 2 at a time with 250 ms between starts, and Deezer kept under its
+ * documented 50 requests per 5 s. Change with SPOTIFY_DISCOVERY_METADATA_RATE,
+ * _CONCURRENCY, _MIN_GAP, _RETRIES and _MAX_RETRY_WAIT (the Deezer cap stays).
+ */
+export const METADATA_PACE: PaceOptions = { retries: 1, backoffMs: [1_000], maxRetryWaitMs: 10_000, timeoutMs: 10_000, concurrency: 2, minGapMs: 250 };
+
+/** `fetchImpl` paced for the metadata sites; see METADATA_PACE. */
+export function pacedMetadataFetch(fetchImpl: FetchLike, env: NodeJS.ProcessEnv = process.env, sleep?: (ms: number) => Promise<void>): FetchLike {
+  const { pace, warnings } = paceFromEnv("SPOTIFY_DISCOVERY_METADATA", METADATA_PACE, env);
+  for (const w of warnings) console.error(w);
+  // paced-fetch passes the caller's string URL through unchanged.
+  return pacedFetch({ fetch: fetchImpl as PacedFetchLike, defaults: pace, hosts: { "deezer.com": { ...pace, rate: { count: 50, perMs: 5_000 } } }, sleep }) as FetchLike;
+}
 
 async function getHtml(fetchImpl: FetchLike, url: string): Promise<string | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetchImpl(url, { headers: { "User-Agent": METADATA_UA, Accept: "*/*", "Accept-Encoding": "identity" }, signal: ctrl.signal });
+    const res = await fetchImpl(url, { headers: { "User-Agent": METADATA_UA, Accept: "*/*", "Accept-Encoding": "identity" } });
     return res.ok ? await res.text() : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
