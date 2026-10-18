@@ -87,20 +87,27 @@ export interface LaneState {
   artists: Record<string, LearnedArtist>;
   /** Spotify artist ids by name key (null: searched, not found). */
   artist_ids: Record<string, string | null>;
+  /**
+   * The day each known label and artist was last checked for new releases, by
+   * source key (`label:<key>`, `artist:<key>`). The feed checks the longest-waiting
+   * first and looks back to each source's own last check, so a source left out
+   * of one run loses nothing.
+   */
+  checked: Record<string, string>;
   pool: Record<string, PoolItem>;
   pending: Record<string, PendingItem>;
   /** Keys that are done with: picked, rejected or expired, and when. */
   closed: Record<string, { status: "picked" | "rejected" | "expired"; date: string }>;
 }
 
-export const emptyLaneState = (): LaneState => ({ labels: {}, seed_quiet: {}, artists: {}, artist_ids: {}, pool: {}, pending: {}, closed: {} });
+export const emptyLaneState = (): LaneState => ({ labels: {}, seed_quiet: {}, artists: {}, artist_ids: {}, checked: {}, pool: {}, pending: {}, closed: {} });
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 export function validLaneState(v: unknown): LaneState | null {
   if (!isObj(v)) return null;
   const s = { ...emptyLaneState(), ...v } as LaneState;
-  for (const k of ["labels", "seed_quiet", "artists", "artist_ids", "pool", "pending", "closed"] as const) if (!isObj(s[k])) return null;
+  for (const k of ["labels", "seed_quiet", "artists", "artist_ids", "checked", "pool", "pending", "closed"] as const) if (!isObj(s[k])) return null;
   return s;
 }
 
@@ -187,12 +194,18 @@ export interface RunFile {
     artist_ids: Record<string, string | null>;
     searched_labels: string[];
     active_labels: string[];
+    /** Source keys checked this run (see LaneState.checked); written to the lane state at finish. */
+    checked?: string[];
   };
   finished?: { at: string; report: string };
   /** When discovery_review was first called; discovery_finish requires it. */
   reviewed_at?: string;
   /** Spotify API requests made for this run so far (begin, verify_tracks, finish). */
   spotify_requests?: number;
+  /** The same, by step: begin's pending checks and known-source feed, verify_tracks, finish. */
+  requests_by_step?: { pending?: number; feed?: number; begin?: number; verify?: number; finish?: number };
+  /** How the known-source check went: sources checked of all, and why it stopped. */
+  feed?: { checked: number; total: number; stopped: "done" | "tracks" | "requests"; oldest_waiting?: string };
 }
 
 /** Lane-specific state files live under lanes/. */

@@ -101,7 +101,10 @@ export class FakeSpotify {
     }
     if ((m = path.match(/^\/albums\/([^/]+)$/))) {
       const a = this.albums.get(m[1]!);
-      return a ? json({ ...a.album, copyrights: [{ type: "C", text: `2026 ${a.label}` }, { type: "P", text: `2026 ${a.label}` }], genres: [] }) : json({}, 404);
+      if (!a) return json({}, 404);
+      // Like the real endpoint: the first 50 tracks come with the album (simplified, no album or ISRC).
+      const tracks = a.tracks.map(({ album: _a, external_ids: _e, ...t }) => t);
+      return json({ ...a.album, copyrights: [{ type: "C", text: `2026 ${a.label}` }, { type: "P", text: `2026 ${a.label}` }], genres: [], tracks: { items: tracks.slice(0, 50), next: tracks.length > 50 ? "more" : null } });
     }
     if (path === "/me/playlists" && method === "POST") {
       const body = JSON.parse(String(init?.body));

@@ -1,6 +1,6 @@
 {
   "playlist": {
-    "name": "hermes{YYYYMMDD}",
+    "name": "{YYMMDD}",
     "description": "Discovery playlist auto-curated from your listening profile",
     "public": false
   },

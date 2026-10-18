@@ -18,7 +18,7 @@
 
 An MCP server that runs a Spotify discovery playlist for a scheduled agent. Fetching, verifying, deduplicating and saving state are all code, so the agent's model only has to judge music.
 
-**Status: running on Hermes since 2026-10-03.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that builds a playlist each Tuesday and Friday. Six jobs, one per genre "lane", run on a local Qwen 27B model and each add tracks to that day's playlist.
+**Status: in daily use.** The design comes from two weeks of a [Hermes](https://github.com/NousResearch/hermes-agent) cron setup that built a playlist each Tuesday and Friday: six jobs, one per genre "lane", on a local Qwen 27B model, each adding tracks to that day's playlist. It ran on Hermes from 2026-10-03. Since 2026-10-18 it runs from [spotify-discovery](https://github.com/wkbaran/spotify-discovery), a plain scheduled job that drives this server over MCP, does the research in a bounded tool loop and posts the reports to Discord. The six lanes there take about 20 minutes in all instead of most of a morning, and the feed's request budget (below) keeps them inside Spotify's daily quota, so it can build a playlist every day. The Hermes setup below still works.
 
 ## Why
 
@@ -39,7 +39,7 @@ Each step is done either by **code** (this server) or by the **model**.
 
 | # | Step | Who | What happens |
 |---|---|---|---|
-| 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists, drops anything already recommended, and returns the lane brief and a list with refs (`K1`, `C1`) |
+| 1 | `discovery_begin(lane)` | code | Finds or creates today's playlist (under a lock), fetches new releases from the lane's labels and artists (longest-waiting first, within a request budget; see [below](#staying-inside-spotifys-quota)), drops anything already recommended, and returns the lane brief and a list with refs (`K1`, `C1`) |
 | 2 | Web research | model (subagent) | Looks for artists and labels **outside** the lists the feed already covered, and hands its finds straight to `verify_tracks(lane, text)`. The server checks each one on Spotify with exact field searches, reads its real label and genre, dedups it, and gives it a ref (`W1`) |
 | 3 | `discovery_review(lane)` | code | Lists everything pickable in the run from the server's own records: verified web finds with their reasons, then the feed |
 | 4 | `discovery_finish(lane, picks, …)` | model picks, code does the rest | The model picks by ref, best first. The server applies the pick rules, adds tracks that aren't already in the playlist, saves all state and the report, and returns a one-line summary of what was added |
@@ -106,6 +106,19 @@ The feed is fetched by date ("released since this lane's last run"), but **the c
 
 Web finds that verified but weren't picked go into the same pool. Web finds that **aren't on Spotify yet** (an album due out in three weeks, a release out that morning) are kept as *pending*. Each run checks them quietly, and they join the pool once they appear.
 
+### Staying inside Spotify's quota
+
+Development Mode apps get a daily request quota that Spotify doesn't publish. Past it, every request fails with `429 QUOTA_EXCEEDED` for up to a day (the block ends 24 hours after the first request of the window). Every pick teaches a lane labels and artists, and checking all of them each run grew to 100–140 requests a lane, so on 2026-10-16 and 10-18 the sixth lane ran out.
+
+So the feed checks the lane's known labels and artists **longest-waiting first**, and stops once it has `feed_tracks` new tracks (enough for the model to choose from) or has used `feed_requests` requests (the ceiling on a quiet day, when most sources have nothing new). The sources it didn't reach go first next run. Each source looks back to **its own** last check, at most 30 days, so a source left out of a run loses nothing; its releases arrive a run later. No source is starved by its place in the list. Before 0.5.0 the feed took the first 20 labels and 20 artists in a fixed order, so the ones after that were never checked.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `feed_requests` | `60` | Spotify requests the feed may use per run |
+| `feed_tracks` | `18` | New tracks after which the feed stops early (3× a pick target of 6) |
+
+Set them in `lanes.json`, under `defaults` or per lane. A run that doesn't finish marks nothing as checked. Each release costs one request, since the album response carries its tracks. The work list says when sources were left over, and each run file records Spotify requests by step (`requests_by_step`: pending checks, feed, verify, finish), so you can see where a lane's quota goes.
+
 ### The lane learns new labels
 
 When research turns up a new label, `discovery_finish` saves it to that lane as `found`, and the next run's feed includes it. Spotify has no label IDs, and searching by label name also finds labels with similar names, so the first time a release on the label turns up, the server saves the label's exact name from the release's ℗ line. After that, the feed only takes releases whose ℗ line names that label. A found label is promoted once one of its tracks is picked. It's dropped after a run of quiet runs, and the report says so. Labels you list in `lanes.json` are never dropped automatically. The report only notes when one has gone quiet.
@@ -136,7 +149,7 @@ The default redirect URI is `http://127.0.0.1:43827/spotify/callback`; change it
 
 `SPOTIFY_DISCOVERY_DIR` holds:
 
-- `lanes.json`: yours. Start from [hermes/lanes.example.json](hermes/lanes.example.json), which has the six lanes from the original cron prompts.
+- `lanes.json`: yours. Start from [hermes/lanes.example.json](hermes/lanes.example.json), which has the six lanes from the original cron prompts. `playlist.name` names each day's playlist: `{YYMMDD}` (the default since 0.5.0, such as `261018`), `{YYYYMMDD}` or `{YYYY-MM-DD}`, with any text around it. Keep it short: Spotify's apps don't scroll long titles, so a name like `hermes20261018` gets cut off, and a name that starts with the date sorts by date.
 - `taste_profile.json`: optional; `core_artists` from your listening, for `max_core_picks`.
 - The state the server writes: `history.json`, `days.json`, `lanes/<lane>.json`, `runs/`.
 
@@ -193,6 +206,6 @@ The reports reach Discord through a no-model job instead, because copying a long
 
 ## Spotify API notes
 
-This uses Spotify's Web API as a Development Mode app. The February 2026 changes removed several things the design would otherwise use: label fields, artist genres, related artists, recommendations and new-releases browsing. Search now returns at most 10 results per page. [docs/spotify-api.md](docs/spotify-api.md) lists what was tested and what still works. Genre, BPM and key come from other sources instead; see [docs/metadata-sources.md](docs/metadata-sources.md).
+This uses Spotify's Web API as a Development Mode app. The February 2026 changes removed several things the design would otherwise use: label fields, artist genres, related artists, recommendations and new-releases browsing. Search now returns at most 10 results per page. Development Mode also has an unpublished daily quota; see [Staying inside Spotify's quota](#staying-inside-spotifys-quota). [docs/spotify-api.md](docs/spotify-api.md) lists what was tested and what still works. Genre, BPM and key come from other sources instead; see [docs/metadata-sources.md](docs/metadata-sources.md).
 
 MIT licensed.

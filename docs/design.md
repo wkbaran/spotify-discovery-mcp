@@ -18,15 +18,15 @@ All tools are registered only when `SPOTIFY_DISCOVERY_DIR` is set. Every path co
 
 ### `discovery_begin(lane)`
 
-1. **Finds or creates today's playlist.** It takes `days.json.lock`; if today has no playlist, it creates `hermes<YYYYMMDD>` (private) with `POST /me/playlists` and records it. "Today" uses `SPOTIFY_DISCOVERY_TZ`, else `TZ`, else UTC.
+1. **Finds or creates today's playlist.** It takes `days.json.lock`; if today has no playlist, it creates one named from `lanes.json`'s `playlist.name` (default `{YYMMDD}`, such as `261018`: short enough for app titles, which don't scroll, and it sorts by date) (private) with `POST /me/playlists` and records it. "Today" uses `SPOTIFY_DISCOVERY_TZ`, else `TZ`, else UTC.
 2. **Re-checks pending items** with exact searches; any that are now on Spotify join the pool.
-3. **Fetches the feed** for this lane since its `last_run`:
-   - each label (seed, found and promoted): `label:"…" tag:new` album search, paged; if `last_run` is more than 13 days ago, `label:"…" year:…` filtered by `release_date`;
+3. **Fetches the feed** from the lane's known labels and artists, longest-waiting first, until it has `feed_tracks` new tracks (default 18) or has used `feed_requests` Spotify requests (default 60). The sources left over go first next run. Each source looks back to its own last check (`checked` in `lanes/<lane>.json`, at most 30 days), so one left out of a run loses nothing; its releases arrive a run later. Never-checked sources use the lane's `last_run`. Why: every pick teaches the lane labels and artists, so checking all of them every run grew without bound (100–140 requests a lane by 2026-10-18), and Spotify's daily Development Mode quota ran out on the sixth lane. The old fixed caps of 20 labels and 20 artists also meant the sources at the end of the list were never checked at all.
+   - each label (seed, found and promoted): `label:"…" tag:new` album search, paged; if the source's window is more than 13 days, `label:"…" year:…` filtered by `release_date`;
    - each lane artist: `/artists/{id}/albums`, filtered by `release_date`;
-   - each release's tracks, grouped by release;
-   - every release's label from the album's ℗ line. That's one extra request per release, so the work list can show the label for every item. `label:` search is loose ("Bubble" also finds "Bubble beats bollywood"), so a release found through a label is kept only if its ℗ label is that label. Once a learned label has a `spotify_name` (the exact ℗ name, saved by `finish` the first time any release in a run shows it), the ℗ label must match that name; until then, and for seed labels, every word of the label's name must appear in the ℗ label.
+   - each release's label from the album's ℗ line, and its tracks, from one `GET /albums/{id}` (the response carries the first 50 tracks; `/albums/{id}/tracks` only for longer albums), so the work list can show the label for every item.
+   - The work list says when sources were left over: `Checked 31 of 70 known labels and artists (60-request budget used); the other 39 go first next run (oldest last checked 2026-10-13).` The run file records the same under `feed`, and Spotify requests by step under `requests_by_step` (`pending`, `feed`, `begin`, `verify`, `finish`). `label:` search is loose ("Bubble" also finds "Bubble beats bollywood"), so a release found through a label is kept only if its ℗ label is that label. Once a learned label has a `spotify_name` (the exact ℗ name, saved by `finish` the first time any release in a run shows it), the ℗ label must match that name; until then, and for seed labels, every word of the label's name must appear in the ℗ label.
 4. **Adds new candidates to the lane's pool**, skipping anything recommended before (history, by URI or by normalized key) or already picked, rejected or expired.
-5. **Writes a run file** with refs, and returns the work list. `begin` changes nothing else; what it learned (expired items, pending re-checks, artist ids, active labels) is applied by `finish`.
+5. **Writes a run file** with refs, and returns the work list. `begin` changes nothing else; what it learned (expired items, pending re-checks, artist ids, active labels, which sources were checked) is applied by `finish`. A run that never finishes marks nothing checked, so those sources go first again. Quiet-run counts (for dropping found labels) count only the labels actually searched.
 
 [discovery-tools.md](discovery-tools.md#1-discovery_begin) shows a real result for a made-up lane.
 
@@ -102,9 +102,10 @@ Your settings and the learned state are separate files on purpose. You can edit 
 
 ```jsonc
 {
-  "playlist": { "name": "hermes{YYYYMMDD}", "description": "Discovery playlist auto-curated from your listening profile" },
+  "playlist": { "name": "{YYMMDD}", "description": "Discovery playlist auto-curated from your listening profile" },
   "defaults": { "target": [3, 6], "max_feed_picks": 3, "max_core_picks": 2, "min_web_picks": 0,
-                "feed_cap": 25, "carry_runs": 4, "max_age_days": 365, "pending_days": 42, "quiet_runs": 8 },
+                "feed_cap": 25, "carry_runs": 4, "max_age_days": 365, "pending_days": 42, "quiet_runs": 8,
+                "feed_requests": 60, "feed_tracks": 18 },
   "lanes": {
     "a-dnb": {
       "name": "Neurofunk, techstep, and experimental DnB",

@@ -12,6 +12,8 @@ const limits = {
   max_age_days: z.number().int().min(7).max(3650),
   pending_days: z.number().int().min(1).max(180),
   quiet_runs: z.number().int().min(2).max(100),
+  feed_requests: z.number().int().min(5).max(1000),
+  feed_tracks: z.number().int().min(1).max(200),
 };
 
 export const DEFAULTS = {
@@ -24,6 +26,8 @@ export const DEFAULTS = {
   max_age_days: 365,
   pending_days: 42,
   quiet_runs: 8,
+  feed_requests: 60,
+  feed_tracks: 18,
 };
 
 const laneSchema = z.object({
@@ -43,11 +47,11 @@ const fileSchema = z.object({
   timezone: z.string().optional(),
   playlist: z
     .object({
-      name: z.string().default("hermes{YYYYMMDD}"),
+      name: z.string().default("{YYMMDD}"),
       description: z.string().default("Discovery playlist auto-curated from your listening profile"),
       public: z.boolean().default(false),
     })
-    .default({ name: "hermes{YYYYMMDD}", description: "Discovery playlist auto-curated from your listening profile", public: false }),
+    .default({ name: "{YYMMDD}", description: "Discovery playlist auto-curated from your listening profile", public: false }),
   defaults: z.object(Object.fromEntries(Object.entries(limits).map(([k, v]) => [k, v.optional()]))).default({}),
   lanes: z.record(z.string().regex(/^[a-z0-9][a-z0-9_-]{0,40}$/, "lane ids are lowercase letters, digits, - and _"), laneSchema),
 });
@@ -71,6 +75,10 @@ export interface Lane {
   max_age_days: number;
   pending_days: number;
   quiet_runs: number;
+  /** Spotify requests the known-source check may use per run; sources left over wait for a later run. */
+  feed_requests: number;
+  /** New tracks after which the known-source check stops early. */
+  feed_tracks: number;
 }
 
 export interface LanesFile {
@@ -122,7 +130,8 @@ export async function loadCoreArtists(dir: string): Promise<string[]> {
   return loaded.status === "ok" ? loaded.value : [];
 }
 
-/** "hermes{YYYYMMDD}" with today's date. */
+/** A name template with today's date: {YYMMDD} (sorts by date and fits app titles), {YYYYMMDD} or {YYYY-MM-DD}. */
 export function playlistName(template: string, day: string): string {
-  return template.replace("{YYYYMMDD}", day.replace(/-/g, "")).replace("{YYYY-MM-DD}", day);
+  const compact = day.replace(/-/g, "");
+  return template.replace("{YYYYMMDD}", compact).replace("{YYMMDD}", compact.slice(2)).replace("{YYYY-MM-DD}", day);
 }

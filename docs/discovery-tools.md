@@ -81,7 +81,7 @@ Output:
 <!-- generated: discovery_begin -->
 ```text
 Lane a-dnb: Neurofunk and techstep
-Today's playlist: hermes20261006 (0 tracks so far)
+Today's playlist: 261006 (0 tracks so far)
 Baseline: Dark, technical drum & bass: neurofunk, techstep and halftime.
 Research note: Releases are sparse; two great fits beat six average ones.
 Pick up to 6 (aim for 3–6; fewer is fine if nothing else fits). At most 3 from K/C refs unless no web find verifies. At most 2 by core artists.
@@ -225,7 +225,7 @@ Output. It lists what was added and tells the model its reply, "Done: a-dnb". Th
 
 <!-- generated: discovery_finish -->
 ```text
-Saved. Added 5 track(s) to hermes20261006: Lumen Drift — Glass Engine; Vanta — Signal Loss; Mara Voss — Pressure Front; Kestrel — Hollow Ground; Dekker — Night Shift.
+Saved. Added 5 track(s) to 261006: Lumen Drift — Glass Engine; Vanta — Signal Loss; Mara Voss — Pressure Front; Kestrel — Hollow Ground; Dekker — Night Shift.
 The report job posts the full report. Reply with one line: Done: a-dnb
 ```
 
@@ -247,7 +247,7 @@ A separate no-model cron job runs `spotify-discovery-mcp report` every few minut
 <!-- generated: report -->
 ```text
 **Lane:** Neurofunk and techstep
-**Playlist:** hermes20261006 — <https://open.spotify.com/playlist/pl1>
+**Playlist:** 261006 — <https://open.spotify.com/playlist/pl1>
 
 **Added (5):**
 - **Lumen Drift — Glass Engine** (Sublevel Recordings, 2026-09-29). Sublevel Recordings: 'clinical neurofunk built from field recordings' <https://example.com/sublevel/glass-engine>
@@ -278,7 +278,7 @@ New labels for this lane: Sublevel Recordings
 
 <!-- generated: discovery_status -->
 ```text
-Today (2026-10-06): hermes20261006, 5 tracks <https://open.spotify.com/playlist/pl1>
+Today (2026-10-06): 261006, 5 tracks <https://open.spotify.com/playlist/pl1>
 History: 6 tracks recommended.
 
 a-dnb — Neurofunk and techstep

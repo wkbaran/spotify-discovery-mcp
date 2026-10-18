@@ -36,6 +36,8 @@ export interface Copyright {
 
 export interface FullAlbum extends Album {
   copyrights?: Copyright[];
+  /** The first page of the album's tracks, when Spotify includes it. */
+  tracks?: { items: Track[]; next: string | null };
 }
 
 export interface Playlist {

@@ -98,12 +98,27 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
     }
   }
 
-  // 2. The feed.
-  const feed = await collectFeed(ctx.client, lane, state, since, day);
+  // 2. The feed: known labels and artists, longest-waiting first, until feed_tracks new tracks or feed_requests requests.
+  const pendingRequests = ctx.client.requests - requestsAtStart;
+  const feed = await collectFeed(ctx.client, lane, state, {
+    today: day,
+    fallbackSince: since,
+    isNew: (t) => {
+      const key = spotifyTrackKey(t);
+      return !seen.find({ uri: t.uri, key }) && !state.closed[key] && !state.pool[key];
+    },
+  });
+  const feedRequests = ctx.client.requests - requestsAtStart - pendingRequests;
   notes.push(...feed.notes);
+  if (feed.stats.checked < feed.stats.total) {
+    const why = feed.stats.stopped === "tracks" ? `${lane.feed_tracks} new tracks found` : `${lane.feed_requests}-request budget used`;
+    const oldest = feed.stats.oldest_waiting === "never" ? "some never checked yet" : `oldest last checked ${feed.stats.oldest_waiting}`;
+    notes.push(`Checked ${feed.stats.checked} of ${feed.stats.total} known labels and artists (${why}); the other ${feed.stats.total - feed.stats.checked} go first next run (${oldest}).`);
+  }
   effects.artist_ids = feed.artistIds;
-  effects.searched_labels = labelSources(lane, state).map((s) => labelKey(s.name));
+  effects.searched_labels = feed.searchedLabels;
   effects.active_labels = [...feed.activeLabels];
+  effects.checked = feed.checked;
 
   const items: Record<string, RunItem> = {};
   const groups: Record<string, string[]> = {};
@@ -195,6 +210,8 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
     labels_found: [],
     effects,
     spotify_requests: ctx.client.requests - requestsAtStart,
+    requests_by_step: { pending: pendingRequests, feed: feedRequests, begin: ctx.client.requests - requestsAtStart },
+    feed: feed.stats,
   };
   await runs.write(id, run);
   await runs.prune(lane.id);

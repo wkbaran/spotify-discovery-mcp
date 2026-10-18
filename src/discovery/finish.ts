@@ -93,6 +93,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
   }
   run.labels_found.push(...parsed.labels);
   run.spotify_requests = (run.spotify_requests ?? 0) + ctx.client.requests - requestsAtStart;
+  run.requests_by_step = { ...run.requests_by_step, verify: (run.requests_by_step?.verify ?? 0) + ctx.client.requests - requestsAtStart };
   await runStore(ctx.dir).write(run.id, run);
   const extra = parsed.labels.length ? [`Labels noted for this lane: ${parsed.labels.map((l) => l.name).join(", ")}`] : [];
   return renderVerifyLines(out, extra);
@@ -234,6 +235,7 @@ export async function discoveryFinish(ctx: Ctx, laneId: string, args: FinishArgs
   });
   run.finished = { at: isoSeconds(now), report };
   run.spotify_requests = (run.spotify_requests ?? 0) + ctx.client.requests - requestsAtStart;
+  run.requests_by_step = { ...run.requests_by_step, finish: (run.requests_by_step?.finish ?? 0) + ctx.client.requests - requestsAtStart };
   await runStore(ctx.dir).write(run.id, run);
   // The report job delivers the report from the run file. Leaving it out of the result
   // gives the model nothing to copy into its reply.
@@ -333,6 +335,7 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
   for (const k of [...e.pending_found, ...e.pending_dropped]) delete s.pending[k];
   for (const k of e.pending_checked) if (s.pending[k]) s.pending[k]!.checks++;
   Object.assign(s.artist_ids, e.artist_ids);
+  for (const k of e.checked ?? []) s.checked[k] = laterDay(s.checked[k], run.day);
 
   // Labels: quiet counts, drops, new ones.
   const active = new Set(e.active_labels);
@@ -356,11 +359,14 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
   trim(s.pending, MAX_PENDING, (p) => p.first_seen);
   const cutoff = addDays(day, -400);
   for (const [k, v] of Object.entries(s.closed)) if (v.date < cutoff) delete s.closed[k];
+  for (const [k, v] of Object.entries(s.checked)) if (v < cutoff) delete s.checked[k];
 
   s.last_run = laterIso(s.last_run, run.started_at);
   s.last_finished_run = run.id;
   return { value: s, result };
 }
+
+const laterDay = (a: string | undefined, b: string) => (a && a > b ? a : b);
 
 function trim<T>(rec: Record<string, T>, max: number, age: (t: T) => string): void {
   const keys = Object.keys(rec);

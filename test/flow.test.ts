@@ -86,7 +86,7 @@ describe("a lane run", () => {
     const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
     expect(begin.isError).toBe(false);
     expect(spotify.created).toBe(1);
-    expect(begin.text).toContain("Today's playlist: hermes20261002 (0 tracks so far)");
+    expect(begin.text).toContain("Today's playlist: 261002 (0 tracks so far)");
     expect(begin.text).toMatch(/K\d+ {2}Flux \/ Chatter \(single, 2026-09-26, Critical Music\) · 2 tracks:/);
     expect(begin.text).toMatch(/K\d+\.2 {2}Sully — Chatter/);
     expect(begin.text).toMatch(/Omneum — Entropy .*Counter Records \[core artist\]/);
@@ -117,7 +117,7 @@ describe("a lane run", () => {
     const finish = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1", chatter, neon, omneum, "W2"], why: { [chatter]: "Critical: 'acid-tipped breakbeats'" } });
     expect(finish.isError).toBe(false);
     expect(finish.text).toContain("W2 can't be added (pending");
-    expect(finish.text).toMatch(/^Saved\. Added 4 track\(s\) to hermes20261002: Skrimor — Kraken; Sully — Chatter; /);
+    expect(finish.text).toMatch(/^Saved\. Added 4 track\(s\) to 261002: Skrimor — Kraken; Sully — Chatter; /);
     expect(finish.text).toMatch(/Reply with one line: Done: a-dnb$/);
     expect(finish.text).not.toContain("**Lane:**");
     const runId = (await readdir(join(dir, "runs"))).find((f) => f.startsWith("a-dnb-"))!.replace(/\.json$/, "");
@@ -150,7 +150,7 @@ describe("a lane run", () => {
     spotify.addRelease({ artist: "Gridlok", title: "Symptoms of the Chaos Mind", tracks: ["Fever", "Other"], label: "Gridlok", date: "2026-10-05" });
     const next = await call(client, "discovery_begin", { lane: "a-dnb" });
     expect(spotify.created).toBe(2);
-    expect(next.text).toContain("hermes20261006");
+    expect(next.text).toContain("261006");
     expect(next.text).toMatch(/C\d+ {2}Gridlok — Fever .*\[web find\]/);
     expect(next.text).toMatch(/C\d+ {2}Sully — Flux .*\[passed 1×\]/);
     expect(next.text).not.toContain("Sully — Chatter");
@@ -233,7 +233,7 @@ describe("a lane run", () => {
     const [a, b] = await Promise.all([call(c1, "discovery_begin", { lane: "a-dnb" }), call(c2, "discovery_begin", { lane: "b-ukg" })]);
     expect(a.isError || b.isError).toBe(false);
     expect(spotify.created).toBe(1);
-    expect(b.text).toContain("hermes20261002");
+    expect(b.text).toContain("261002");
   });
 
   it("two lanes finishing at once with the same track add it once", async () => {
