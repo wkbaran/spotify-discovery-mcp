@@ -108,9 +108,16 @@ Web finds that verified but weren't picked go into the same pool. Web finds that
 
 ### Staying inside Spotify's quota
 
-Development Mode apps get a daily request quota that Spotify doesn't publish. Past it, every request fails with `429 QUOTA_EXCEEDED` for up to a day (the block ends 24 hours after the first request of the window). Every pick teaches a lane labels and artists, and checking all of them each run grew to 100–140 requests a lane, so on 2026-10-16 and 10-18 the sixth lane ran out.
+Development Mode apps get daily request quotas that Spotify doesn't publish. Since July 2026 they're counted per developer account, not per app, and endpoints are grouped into quota buckets that each have their own limit ([Spotify: quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)). Past a bucket's limit, its requests fail with `429 QUOTA_EXCEEDED` until 24 hours after the window's first request. The others keep working. On 2026-10-19 `/artists/{id}/albums` was blocked after about 76 calls in a day, while `/search` (about 400 that day) and `/albums/{id}` still answered. Before 0.6.0 the feed used that endpoint for every lane artist, so the fifth and sixth lanes ran out on 10-16, 10-18 and 10-19.
 
-So the feed checks the lane's known labels and artists **longest-waiting first**, and stops once it has `feed_tracks` new tracks (enough for the model to choose from) or has used `feed_requests` requests (the ceiling on a quiet day, when most sources have nothing new). The sources it didn't reach go first next run. Each source looks back to **its own** last check, at most 30 days, so a source left out of a run loses nothing; its releases arrive a run later. No source is starved by its place in the list. Before 0.5.0 the feed took the first 20 labels and 20 artists in a fixed order, so the ones after that were never checked.
+Since 0.6.0:
+
+- **Artists are found by search** (`artist:"…" tag:new`, keeping only releases that name the artist), like labels, so `/artists/{id}/albums` isn't used at all.
+- **A block ends only what used that endpoint.** The client remembers blocks per endpoint, and a block during the feed or the pending check ends that step with what it found; the run goes on.
+- **Web first, known sources only if short** (`discovery_begin {feed: false}` then `discovery_fill`; see [discovery-tools.md](docs/discovery-tools.md#web-first-discovery_fill)). The known sources are checked for only as many tracks as the run is short, and pending web finds last, at most once a week each.
+- **An album is read once per process**, so a compilation's tracks cost one album request, not one each.
+
+Within its budget, the feed checks the lane's known labels and artists **longest-waiting first**, and stops once it has `feed_tracks` new tracks (enough for the model to choose from) or has used `feed_requests` requests (the ceiling on a quiet day, when most sources have nothing new). The sources it didn't reach go first next run. Each source looks back to **its own** last check, at most 30 days, so a source left out of a run loses nothing; its releases arrive a run later. No source is starved by its place in the list. Before 0.5.0 the feed took the first 20 labels and 20 artists in a fixed order, so the ones after that were never checked.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -191,14 +198,15 @@ The reports reach Discord through a no-model job instead, because copying a long
 | `SPOTIFY_DISCOVERY_TZ` | `TZ`, else UTC | Which day "today" is, for the playlist name and the day's bookkeeping. `lanes.json`'s old `timezone` field is ignored |
 | `SPOTIFY_DISCOVERY_METADATA` | `off` | Where to look up genre: any of `beatport`, `soundcloud` and `deezer`, comma-separated. Off by default. Beatport and SoundCloud are scraped pages, not open APIs, and their terms don't allow it; if you turn them on, keep it light, and let a blocked lookup fail. Deezer is an official API that needs no key. It is tried only when Beatport is off or finds nothing, and its genres are coarse (`Folk`, `Alternative`, `Electro`), so it flags a track as outside the lane only when none of its genres could be electronic |
 | `SPOTIFY_DISCOVERY_RATE`, `_CONCURRENCY`, `_MIN_GAP` | none | Pacing of requests to the Spotify API, e.g. `60/min`, `2`, `250ms`. See [paced-fetch](https://github.com/wkbaran/paced-fetch) |
-| `SPOTIFY_DISCOVERY_RETRIES`, `_MAX_RETRY_WAIT` | `3`, `60s` | Retries after a 429 (or a 5xx on GET, PUT and DELETE; a POST such as adding tracks isn't sent twice), waiting Spotify's `Retry-After`; a longer `Retry-After` (a quota block) fails at once and blocks every later request until it ends |
+| `SPOTIFY_DISCOVERY_RETRIES`, `_MAX_RETRY_WAIT` | `3`, `60s` | Retries after a 429 (or a 5xx on GET, PUT and DELETE; a POST such as adding tracks isn't sent twice), waiting Spotify's `Retry-After`; a longer `Retry-After` (a quota block) fails at once and blocks later requests to the same endpoint until it ends |
 | `SPOTIFY_DISCOVERY_METADATA_RATE`, `_CONCURRENCY`, `_MIN_GAP`, `_RETRIES`, `_MAX_RETRY_WAIT` | none, `2`, `250ms`, `1`, `10s` | The same for Beatport, SoundCloud and Deezer pages. Deezer is also held to its documented 50 requests per 5 s |
 
 ## Tools
 
 | Tool | What it does |
 |---|---|
-| `discovery_begin(lane)` | Today's playlist, the feed and carried-over candidates, with refs |
+| `discovery_begin(lane, feed?)` | Today's playlist, the feed and carried-over candidates, with refs; `feed: false` leaves the feed for `discovery_fill` |
+| `discovery_fill(lane, picks)` | Web first: after choosing from the web finds, checks the known sources (then pending finds) for only as many as the run is short |
 | `verify_tracks(lane, text)` | Called by the research subagent: checks its finds on Spotify; W refs |
 | `discovery_review(lane)` | Everything pickable in the current run |
 | `discovery_finish(lane, picks, …)` | Applies the rules, adds tracks, saves, returns the report |

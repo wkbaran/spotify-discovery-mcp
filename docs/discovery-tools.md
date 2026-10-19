@@ -62,12 +62,13 @@ The main model never handles a track, URI, playlist id or the subagent's finds. 
 
 ## 1. `discovery_begin`
 
-Finds or creates today's playlist, fetches new releases from the lane's labels and artists, and writes a run file. It changes no lane state; `discovery_finish` applies what it learned.
+Finds or creates today's playlist, fetches new releases from the lane's labels and artists, and writes a run file. It changes no lane state; `discovery_finish` applies what it learned. This page shows the one-step form (`feed` left at `true`); the [standalone job](https://github.com/wkbaran/spotify-discovery) uses the web-first form described under [`discovery_fill`](#web-first-discovery_fill).
 
 <!-- args: discovery_begin -->
 | Field | Meaning |
 |---|---|
 | `lane` | The lane id from `lanes.json` |
+| `feed` | Default `true`. `false` skips the known labels and artists, and the pending finds, for now: `discovery_fill` checks them later, only if the web finds fall short. The run then starts with no Spotify searches at all |
 
 The example lane has two seed labels and one artist. Its history already has one track, and this is its first run.
 
@@ -135,7 +136,7 @@ Output:
 ```text
 W1 ✓ Vanta — Signal Loss · 2026-10-02 · Sublevel Recordings [core artist]
     ⚠ label is Sublevel Recordings, not Deepcut Records as the source said
-W2 pending Ash Meridian — Fever Line · not on Spotify (yet); re-checked each run
+W2 pending Ash Meridian — Fever Line · not on Spotify (yet); looked for again later
 W3 dup Hollow Point — Static Bloom · recommended 2026-09-18 (a-dnb)
 W4 ✓ Lumen Drift — Glass Engine · 2026-09-29 · Sublevel Recordings
 Labels noted for this lane: Sublevel Recordings
@@ -146,11 +147,25 @@ Labels noted for this lane: Sublevel Recordings
 The four outcomes:
 
 - **✓ verified:** found with an exact search, so it can be picked. When the release's ℗ line names a different label from the source, the line says so, and the report uses the real one.
-- **pending:** not on Spotify yet (the release date is in the future). It's kept and re-checked by every run for `pending_days`, then offered as a `C` ref once it's out.
+- **pending:** not on Spotify yet (the release date is in the future). It's kept for `pending_days` and looked for again: by `discovery_fill` when a run is short, or by a one-step `begin`, at most once a week each. Once it's out it's offered as a `C` ref.
 - **dup:** already recommended, here by this lane on 2026-09-18. It can't be picked, and the report mentions it.
 - **✗ not found:** no exact match. It isn't added (none in this example).
 
 The subagent then replies only "DONE" and a count, so none of this text passes through the main model.
+
+### Web first: `discovery_fill`
+
+With `discovery_begin {lane, feed: false}`, the run starts with only the carried-over `C` refs, and the work list says "Known labels and artists: not checked yet". The research runs and verifies its finds as above. The caller then chooses from the web finds and, if that leaves the lane short, calls `discovery_fill` with the picks so far:
+
+<!-- args: discovery_fill -->
+| Field | Meaning |
+|---|---|
+| `lane` | The lane id |
+| `picks` | The refs chosen so far, e.g. `["W2", "W5"]` |
+
+The server applies the pick rules to `picks` and works out how many more the lane has room for: the lane maximum less the picks, and no more than the K/C limit allows. For that many it checks the known labels and artists, longest-waiting first, with a budget of about three candidate tracks and ten Spotify requests per missing pick (never more than `feed_tracks` / `feed_requests`). Only if that finds fewer new tracks than it needs does it look for the pending web finds, each at most once a week, with two searches. The result lists the new `K` refs, and `C` refs for pending finds now on Spotify. If the picks already fill the lane, it checks nothing. Then `discovery_review` lists everything, and `discovery_finish` takes the combined picks. `fill` runs once per run.
+
+On 2026-10-19 a lane's one-step begin spent about 90 Spotify requests on the known sources and the pending finds before research started, and none of it was picked. The web-first order spends those requests only when the web comes up short.
 
 ## 3. `discovery_review`
 
@@ -258,7 +273,7 @@ A separate no-model cron job runs `spotify-discovery-mcp report` every few minut
 
 Dropped by limits: Dekker — Rivet (feed limit of 3)
 Already recommended: Hollow Point — Static Bloom
-Not on Spotify yet (re-checking each run): Ash Meridian — Fever Line <https://example.com/ironclad/fever-line>
+Not on Spotify yet (looked for again later): Ash Meridian — Fever Line <https://example.com/ironclad/fever-line>
 New labels for this lane: Sublevel Recordings
 ```
 

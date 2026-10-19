@@ -1,4 +1,4 @@
-import { pacedFetch, paceFromEnv, RateLimitedError, type FetchLike as PacedFetchLike, type PaceOptions } from "paced-fetch";
+import { pacedFetch, paceFromEnv, RateLimitedError, type FetchLike as PacedFetchLike, type PacedFetch, type PaceOptions } from "paced-fetch";
 import { SPOTIFY_API } from "../config.js";
 import { AuthError, type FetchLike, type TokenSource } from "../auth/tokens.js";
 
@@ -59,18 +59,34 @@ export class SpotifyError extends Error {
 
 /**
  * Spotify asked us to wait longer than is worth waiting (a quota block can be hours).
- * Thrown at once, and for every later request until `until`, so a tool call ends
- * in seconds instead of grinding through its requests to the harness's timeout.
+ * Thrown at once, and for every later request to the same endpoint (`bucket`)
+ * until `until`, so a tool call ends in seconds instead of grinding through its
+ * requests to the harness's timeout.
  */
 export class RateLimitError extends SpotifyError {
   constructor(
     readonly until: Date,
     reason: string,
+    readonly bucket = "",
   ) {
     const mins = Math.max(1, Math.round((until.getTime() - Date.now()) / 60_000));
-    super(`Spotify is rate-limiting this app${reason ? ` (${reason})` : ""} until ${until.toISOString().slice(0, 16)}Z, about ${mins} min from now.`, 429);
+    super(`Spotify is rate-limiting this app${bucket ? `'s ${bucket} requests` : ""}${reason ? ` (${reason})` : ""} until ${until.toISOString().slice(0, 16)}Z, about ${mins} min from now.`, 429);
     this.name = "RateLimitError";
   }
+}
+
+const ID_AFTER = new Set(["albums", "artists", "playlists", "tracks", "users", "shows", "episodes", "audiobooks", "chapters"]);
+
+/**
+ * The endpoint a path belongs to, ids replaced: "/artists/{id}/albums". Development
+ * Mode quotas are counted per group of endpoints ("quota buckets", unnamed and
+ * subject to change), so a QUOTA_EXCEEDED blocks only the endpoint that got it.
+ * On 2026-10-19 `/artists/{id}/albums` was blocked for 24 h while `/search`
+ * and `/albums/{id}` kept working.
+ */
+export function spotifyBucket(path: string): string {
+  const segs = path.split("?")[0]!.split("/");
+  return segs.map((s, i) => (i > 0 && ID_AFTER.has(segs[i - 1]!) && s ? "{id}" : s)).join("/");
 }
 
 /** Rethrow a rate-limit error from a catch that would otherwise skip one item and carry on. */
@@ -80,10 +96,10 @@ export function rethrowRateLimit(err: unknown): void {
 
 /**
  * Pacing for the Spotify Web API, which publishes no fixed limit (a rolling 30 s
- * window, and a daily quota in Development Mode). A 429 is waited out up to 3
- * times for its Retry-After (2 s without one); a longer Retry-After, such as a
- * quota block of hours, fails at once and blocks every later request until it
- * ends. Change with SPOTIFY_DISCOVERY_RATE, _CONCURRENCY, _MIN_GAP, _RETRIES and
+ * window, and daily quotas per group of endpoints in Development Mode). A 429 is
+ * waited out up to 3 times for its Retry-After (2 s without one); a longer
+ * Retry-After, such as a quota block of hours, fails at once and blocks later
+ * requests to the same endpoint until it ends. Change with SPOTIFY_DISCOVERY_RATE, _CONCURRENCY, _MIN_GAP, _RETRIES and
  * _MAX_RETRY_WAIT.
  */
 export const SPOTIFY_PACE: PaceOptions = { retries: 3, backoffMs: [2_000], maxRetryWaitMs: 60_000, timeoutMs: 30_000 };
@@ -101,7 +117,11 @@ export const quoteSafe = (s: string) => s.replace(/["“”]/g, "").trim();
 export class SpotifyClient {
   /** Requests sent to Spotify, retries included. */
   requests = 0;
-  private readonly fetchImpl: FetchLike;
+  private readonly fetchImpl: PacedFetch;
+  /** Endpoints Spotify has blocked, by spotifyBucket(), until when and why. */
+  private readonly blocked = new Map<string, { until: Date; reason: string }>();
+  /** Albums read this process: a compilation's tracks, or a release the feed and verify both see, cost one request. */
+  private readonly albums = new Map<string, Promise<FullAlbum>>();
 
   constructor(
     private readonly tokens: Pick<TokenSource, "token">,
@@ -118,11 +138,14 @@ export class SpotifyClient {
       return fetchImpl(input, init);
     };
     // paced-fetch passes the caller's string URL through unchanged.
-    this.fetchImpl = pacedFetch({ fetch: counted as PacedFetchLike, defaults: pace, sleep }) as FetchLike;
+    this.fetchImpl = pacedFetch({ fetch: counted as PacedFetchLike, defaults: pace, sleep });
   }
 
   async request<T>(method: string, path: string, opts: { query?: Record<string, string | number | undefined>; body?: unknown } = {}): Promise<T> {
     const url = new URL(this.base + path);
+    const bucket = spotifyBucket(path);
+    const block = this.blocked.get(bucket);
+    if (block && block.until.getTime() > Date.now()) throw new RateLimitError(block.until, block.reason, bucket);
     for (const [k, v] of Object.entries(opts.query ?? {})) if (v !== undefined) url.searchParams.set(k, String(v));
     let forced = false;
     for (;;) {
@@ -137,7 +160,11 @@ export class SpotifyClient {
       } catch (err) {
         if (err instanceof RateLimitedError) {
           const body = safeJson(err.detail) as { error?: { reason?: string; message?: string } } | undefined;
-          throw new RateLimitError(err.until, body?.error?.reason ?? body?.error?.message ?? "");
+          const reason = body?.error?.reason ?? body?.error?.message ?? "";
+          // paced-fetch blocks the whole host; Spotify blocked only this endpoint's bucket.
+          this.blocked.set(bucket, { until: err.until, reason });
+          this.fetchImpl.limiter(url.hostname).blockedUntil = 0;
+          throw new RateLimitError(err.until, reason, bucket);
         }
         throw err;
       }
@@ -202,7 +229,14 @@ export class SpotifyClient {
   }
 
   async album(id: string): Promise<FullAlbum> {
-    return this.request<FullAlbum>("GET", `/albums/${id}`);
+    let p = this.albums.get(id);
+    if (!p) {
+      if (this.albums.size >= 500) this.albums.clear();
+      p = this.request<FullAlbum>("GET", `/albums/${id}`);
+      this.albums.set(id, p);
+      p.catch(() => this.albums.delete(id));
+    }
+    return p;
   }
 
   async createPlaylist(name: string, description: string, isPublic: boolean): Promise<Playlist> {

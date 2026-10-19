@@ -23,6 +23,8 @@ export class FakeSpotify {
   log: string[] = [];
   /** Set to answer every request with a quota 429 and this Retry-After, in seconds. */
   quotaRetryAfter?: number;
+  /** Set to answer only requests whose path matches with a quota 429 (and `quotaRetryAfter`, default a day). */
+  quotaPaths?: RegExp;
   private n = 0;
 
   addRelease(o: { artist: string; title: string; tracks: string[]; label: string; date: string; type?: string; extraArtists?: string[] }): Track[] {
@@ -53,8 +55,8 @@ export class FakeSpotify {
     const path = u.pathname.replace(/^\/v1/, "");
     this.log.push(`${method} ${path}${u.search}`);
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } });
-    if (this.quotaRetryAfter !== undefined) {
-      return new Response(JSON.stringify({ error: { status: 429, message: "Too many requests", reason: "QUOTA_EXCEEDED" } }), { status: 429, headers: { "retry-after": String(this.quotaRetryAfter) } });
+    if (this.quotaPaths ? this.quotaPaths.test(path) : this.quotaRetryAfter !== undefined) {
+      return new Response(JSON.stringify({ error: { status: 429, message: "Too many requests", reason: "QUOTA_EXCEEDED" } }), { status: 429, headers: { "retry-after": String(this.quotaRetryAfter ?? 86_400) } });
     }
     const limit = Number(u.searchParams.get("limit") ?? 5);
     const offset = Number(u.searchParams.get("offset") ?? 0);
@@ -72,8 +74,12 @@ export class FakeSpotify {
       }
       const all = [...this.albums.values()];
       if (type === "album") {
+        // Like Spotify: `artist:` matches any of the release's artists loosely (by word), so callers must check.
         const label = field("label");
-        return json({ albums: page(all.filter((a) => label && sameLabel(a.label, label)).map((a) => a.album)) });
+        const artist = field("artist");
+        const matches = (a: FakeAlbum) =>
+          (label ? sameLabel(a.label, label) : true) && (artist ? a.album.artists.some((x) => textKey(x.name).split(" ").includes(textKey(artist).split(" ")[0]!)) : true) && Boolean(label || artist);
+        return json({ albums: page(all.filter(matches).map((a) => a.album)) });
       }
       const track = field("track");
       const artist = field("artist");

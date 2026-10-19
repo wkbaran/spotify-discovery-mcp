@@ -127,7 +127,7 @@ describe("a lane run", () => {
     expect(report).toMatch(/^\*\*Lane:\*\* Neurofunk/);
     expect(report).toContain("**Added (4):**");
     expect(report).toContain("**Sully — Chatter** (Critical Music, 2026-09-26). Critical: 'acid-tipped breakbeats'");
-    expect(report).toContain("Not on Spotify yet (re-checking each run): Gridlok — Fever");
+    expect(report).toContain("Not on Spotify yet (looked for again later): Gridlok — Fever");
     expect(report).toContain("Already recommended: Sulphur — Dat Luv");
     expect(report).toContain("New labels for this lane: DnB Doctor");
     expect(spotify.playlistUris("pl1")).toHaveLength(4);
@@ -332,7 +332,7 @@ describe("a lane run", () => {
     spotify.quotaRetryAfter = 11991;
     const begin = await call(client, "discovery_begin", { lane: "a-dnb" });
     expect(begin.isError).toBe(true);
-    expect(begin.text).toMatch(/^Spotify rate limit: Spotify is rate-limiting this app \(QUOTA_EXCEEDED\) until .*Z, about 200 min from now\. Nothing was added or saved\. Stop/);
+    expect(begin.text).toMatch(/^Spotify rate limit: Spotify is rate-limiting this app's \/me\/playlists requests \(QUOTA_EXCEEDED\) until .*Z, about 200 min from now\. Nothing was added or saved\. Stop/);
     // One request, then every later one fails without calling Spotify.
     expect(spotify.log).toHaveLength(1);
     const again = await call(client, "discovery_begin", { lane: "a-dnb" });
@@ -378,6 +378,94 @@ describe("a lane run", () => {
     const r = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"], why: "Hanzom calls it an assault; fits the lane." });
     expect(r.isError).toBe(false);
     expect(r.text).toContain("Added 1 track(s)");
+  });
+
+  it("web first: begin with feed false makes no searches; fill looks only for the picks still missing", async () => {
+    const client = await connect();
+    const begin = await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    expect(begin.text).toContain("Known labels and artists: not checked yet; they're checked only if the web finds fall short.");
+    expect(spotify.log).toEqual(["POST /me/playlists"]);
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    // One web pick of up to 6, with the feed limit of 3: room for 3 more.
+    const fill = await call(client, "discovery_fill", { lane: "a-dnb", picks: ["W1"] });
+    expect(fill.text).toMatch(/^Lane a-dnb: checked the known labels and artists for up to 3 more picks\./);
+    expect(fill.text).toMatch(/K1 {2}/);
+    expect(fill.text).toContain("Next: call discovery_review");
+    // Artists are found by search, never through /artists/{id}/albums (its own small daily quota).
+    expect(spotify.log.filter((l) => l.startsWith("GET /artists/"))).toEqual([]);
+    expect(spotify.log.some((l) => l.includes("artist%3A%22Omneum%22"))).toBe(true);
+    const again = await call(client, "discovery_fill", { lane: "a-dnb", picks: ["W1"] });
+    expect(again.text).toMatch(/^Already filled/);
+    const review = await call(client, "discovery_review", { lane: "a-dnb" });
+    expect(review.text).toMatch(/K\d+(\.\d+)? {2}Omneum — Entropy/);
+    const finish = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1", "K1"] });
+    expect(finish.text).toMatch(/^Saved\. Added 2 track\(s\)/);
+    const run = JSON.parse(await readFile(join(dir, "runs", (await readdir(join(dir, "runs"))).find((f) => f.startsWith("a-dnb-"))!), "utf8"));
+    expect(run.filled.need).toBe(3);
+    expect(run.requests_by_step.feed).toBeGreaterThan(0);
+  });
+
+  it("fill checks nothing when the web picks already fill the lane", async () => {
+    await writeFile(join(dir, "lanes.json"), JSON.stringify({ lanes: { "a-dnb": { ...LANES.lanes["a-dnb"], target: [1, 1] } } }));
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    const before = spotify.log.length;
+    const fill = await call(client, "discovery_fill", { lane: "a-dnb", picks: ["W1"] });
+    expect(fill.text).toBe("Lane a-dnb has no room for more picks; nothing was checked. Call discovery_finish with your picks.");
+    expect(spotify.log.length).toBe(before);
+  });
+
+  it("a block on one Spotify endpoint ends only the step that used it", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    spotify.quotaPaths = /^\/search$/;
+    const fill = await call(client, "discovery_fill", { lane: "a-dnb", picks: ["W1"] });
+    expect(fill.isError).toBe(false);
+    expect(fill.text).toContain("Note: Spotify stopped the known-source check: Spotify is rate-limiting this app's /search requests (QUOTA_EXCEEDED)");
+    const searches = spotify.log.filter((l) => l.startsWith("GET /search")).length;
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    // Playlist reads and writes are another endpoint: finishing still works.
+    const finish = await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
+    expect(finish.text).toMatch(/^Saved\. Added 1 track/);
+    expect(spotify.log.filter((l) => l.startsWith("GET /search")).length).toBe(searches);
+  });
+
+  it("looks for a pending find again only when a run is short, at most weekly, with two searches", async () => {
+    const client = await connect();
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    await call(client, "verify_tracks", { lane: "a-dnb", text: RESEARCH });
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: ["W1"] });
+    const gridlok = () => spotify.log.filter((l) => l.startsWith("GET /search") && l.includes("Gridlok")).length;
+
+    // Next day: short, nothing new in the feed, so the pending find is looked for.
+    now = new Date(now.getTime() + 86_400_000);
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    let before = gridlok();
+    await call(client, "discovery_fill", { lane: "a-dnb", picks: [] });
+    expect(gridlok() - before).toBe(2);
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: [] });
+    const state = await readJson<LaneState>("lanes/a-dnb.json");
+    expect(Object.values(state.pending)[0]!.last_checked).toBe("2026-10-03");
+
+    // Two days later: checked this week, so skipped.
+    now = new Date(now.getTime() + 2 * 86_400_000);
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    before = gridlok();
+    await call(client, "discovery_fill", { lane: "a-dnb", picks: [] });
+    expect(gridlok()).toBe(before);
+    await call(client, "discovery_review", { lane: "a-dnb" });
+    await call(client, "discovery_finish", { lane: "a-dnb", picks: [] });
+
+    // A week after the check it's out, and comes back as a C ref.
+    spotify.addRelease({ artist: "Gridlok", title: "Symptoms of the Chaos Mind", tracks: ["Fever"], label: "Gridlok", date: "2026-10-09" });
+    now = new Date(now.getTime() + 5 * 86_400_000);
+    await call(client, "discovery_begin", { lane: "a-dnb", feed: false });
+    const fill = await call(client, "discovery_fill", { lane: "a-dnb", picks: [] });
+    expect(fill.text).toMatch(/Earlier web finds now on Spotify:\nC\d+ {2}Gridlok — Fever/);
   });
 
   it("accepts picks as a JSON string and a dry run saves nothing", async () => {

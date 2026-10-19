@@ -132,10 +132,15 @@ export function bestMatch(matches: Track[], c: Candidate): Track | undefined {
   })[0];
 }
 
-/** Find a candidate on Spotify. Null when no search turns up the same artist and title. */
-export async function findOnSpotify(client: SpotifyClient, c: Candidate): Promise<Verified | null> {
+/**
+ * Find a candidate on Spotify. Null when no search turns up the same artist and title.
+ * `quick` tries only the most exact search and the plain one: for re-checking a
+ * pending find, which usually still isn't there, so the middle rungs rarely pay.
+ */
+export async function findOnSpotify(client: SpotifyClient, c: Candidate, opts: { quick?: boolean } = {}): Promise<Verified | null> {
+  const ladder = searchLadder(c);
   let matches: Track[] = [];
-  for (const q of searchLadder(c)) {
+  for (const q of opts.quick ? [...new Set([ladder[0]!, ladder.at(-1)!])] : ladder) {
     const tracks = await client.searchTracks(q);
     matches = tracks.filter((t) => artistMatches(c.artist, t.artists.map((a) => a.name)) && titleMatches(c.track, t.name));
     if (matches.length) break;

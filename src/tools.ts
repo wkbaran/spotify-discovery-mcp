@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AuthError } from "./auth/tokens.js";
 import { RateLimitError } from "./spotify/client.js";
 import { discoveryBegin, type Ctx } from "./discovery/begin.js";
-import { discoveryFinish, discoveryReview, discoveryStatus, forget, markRecommended, verifyTracks } from "./discovery/finish.js";
+import { discoveryFill, discoveryFinish, discoveryReview, discoveryStatus, forget, markRecommended, verifyTracks } from "./discovery/finish.js";
 
 export function text(t: string): CallToolResult {
   return { content: [{ type: "text", text: t }] };
@@ -50,11 +50,31 @@ export function registerTools(server: McpServer, ctx: () => Promise<Ctx>, dir: s
       title: "Start a lane run",
       description:
         "Step 1 of a lane run. Finds or creates today's playlist, fetches new releases from the lane's known labels and artists, drops anything already recommended, " +
-        "and returns the lane brief plus a list with refs: K (new from known sources) and C (carried over). Call once per run.",
-      inputSchema: { lane },
+        "and returns the lane brief plus a list with refs: K (new from known sources) and C (carried over). Call once per run. " +
+        "With feed: false it skips the known labels and artists (and the pending web finds) for now; discovery_fill checks them later, only for as many picks as the run is short.",
+      inputSchema: {
+        lane,
+        feed: z.boolean().default(true).describe("false: check the known labels and artists later, with discovery_fill, only if the web finds fall short."),
+      },
       annotations: { ...local, idempotentHint: false },
     },
-    (args) => run(async () => text((await discoveryBegin(await ctx(), args.lane)).view)),
+    (args) => run(async () => text((await discoveryBegin(await ctx(), args.lane, { feed: args.feed })).view)),
+  );
+
+  server.registerTool(
+    "discovery_fill",
+    {
+      title: "Fill a lane run from known sources",
+      description:
+        "For a run begun with feed: false, after choosing from the web finds. Give the picks so far; the server works out how many more the lane has room for, " +
+        "checks the known labels and artists (then earlier web finds now on Spotify) for about that many, and lists the new K and C refs. Once per run.",
+      inputSchema: {
+        lane,
+        picks: lenient(z.array(z.string()).max(30)).default([]).describe('The refs chosen so far, e.g. ["W2", "W5"].'),
+      },
+      annotations: { ...local, idempotentHint: true },
+    },
+    (args) => run(async () => text(await discoveryFill(await ctx(), args.lane, args.picks))),
   );
 
   server.registerTool(

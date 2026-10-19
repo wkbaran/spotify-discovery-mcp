@@ -47,6 +47,15 @@ describe("collectFeed", () => {
     expect(spotify.log.filter((l) => l.includes("/tracks"))).toEqual([]);
   });
 
+  it("finds an artist's releases by search, not /artists/{id}/albums, and only where the release names them", async () => {
+    const { spotify, client } = setup();
+    spotify.addRelease({ artist: "Delta Force", title: "Loose", tracks: ["Loose"], label: "Elsewhere", date: "2026-10-17" });
+    const r = await collectFeed(client, lane({ labels: [] }), emptyLaneState(), opts);
+    expect(r.releases.map((x) => x.album.name)).toEqual(["D1"]);
+    expect(spotify.log.filter((l) => l.startsWith("GET /artists/"))).toEqual([]);
+    expect(spotify.log[0]).toMatch(/^GET \/search\?q=artist%3A%22Delta%22\+tag%3Anew&type=album/);
+  });
+
   it("stops at feed_tracks and leaves the rest for later", async () => {
     const { client } = setup();
     const r = await collectFeed(client, lane({ feed_tracks: 2 }), emptyLaneState(), opts);

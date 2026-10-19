@@ -31,18 +31,11 @@ export function renderWorkList(run: RunFile, lane: Lane, covered: { labels: stri
   if (lane.exclude) L.push(`Exclude: ${lane.exclude}`);
   L.push(rulesLine(lane));
   L.push("");
-  if (run.order.feed.length) {
+  if (run.deferred && !run.filled) {
+    L.push("Known labels and artists: not checked yet; they're checked only if the web finds fall short.");
+  } else if (run.order.feed.length) {
     L.push(`New from known labels and artists (since ${run.since}):`);
-    for (const ref of run.order.feed) {
-      const group = run.groups[ref];
-      if (!group) {
-        L.push(itemLine(run.items[ref]!));
-        continue;
-      }
-      const first = run.items[group[0]!]!;
-      L.push(`${ref}  ${first.release} (${first.release_type}, ${year(first.released)}${first.label ? `, ${first.label}` : ""}) · ${group.length} tracks:`);
-      for (const sub of group) L.push(itemLine(run.items[sub]!, { indent: true, showRelease: false }));
-    }
+    L.push(...feedLines(run, run.order.feed));
     if (run.hidden) L.push(`(+${run.hidden} more releases not listed; they come back next run)`);
   } else {
     L.push(`New from known labels and artists (since ${run.since}): nothing.`);
@@ -59,6 +52,37 @@ export function renderWorkList(run: RunFile, lane: Lane, covered: { labels: stri
   L.push("");
   L.push(`Covered labels (research should look elsewhere): ${covered.labels.join(", ") || "none yet"}`);
   L.push(`Covered artists: ${covered.artists.join(", ") || "none yet"}`);
+  return fit(L.join("\n"));
+}
+
+/** K refs as listed: a single track on one line, a release with its tracks indented under it. */
+function feedLines(run: RunFile, refs: string[]): string[] {
+  const L: string[] = [];
+  for (const ref of refs) {
+    const group = run.groups[ref];
+    if (!group) {
+      L.push(itemLine(run.items[ref]!));
+      continue;
+    }
+    const first = run.items[group[0]!]!;
+    L.push(`${ref}  ${first.release} (${first.release_type}, ${year(first.released)}${first.label ? `, ${first.label}` : ""}) · ${group.length} tracks:`);
+    for (const sub of group) L.push(itemLine(run.items[sub]!, { indent: true, showRelease: false }));
+  }
+  return L;
+}
+
+/** discovery_fill's result: what the known sources added, for a run short by `need`. */
+export function renderFill(run: RunFile, lane: Lane, added: string[], need: number): string {
+  if (need <= 0) return `Lane ${lane.id} has no room for more picks; nothing was checked. Call discovery_finish with your picks.`;
+  const K = added.filter((r) => r.startsWith("K"));
+  const C = added.filter((r) => r.startsWith("C"));
+  const L: string[] = [`Lane ${lane.id}: checked the known labels and artists for up to ${need} more pick${need === 1 ? "" : "s"}.`];
+  if (K.length) L.push("", "New from known labels and artists:", ...feedLines(run, K));
+  if (C.length) L.push("", "Earlier web finds now on Spotify:", ...C.map((r) => itemLine(run.items[r]!)));
+  if (!added.length) L.push("Nothing new.");
+  const notes = run.notes.filter((n) => /^(Checked|Spotify stopped)/.test(n));
+  if (notes.length) L.push("", ...notes.map((n) => `Note: ${n}`));
+  L.push("", "Next: call discovery_review for the full list, then discovery_finish.");
   return fit(L.join("\n"));
 }
 
@@ -151,7 +175,7 @@ export function renderReport(r: ReportInput): string {
   const extra: string[] = [];
   if (r.dropped.length) extra.push(`Dropped by limits: ${r.dropped.map((d) => `${d.item.artist} — ${d.item.title} (${d.reason})`).join("; ")}`);
   if (r.dups.length) extra.push(`Already recommended: ${r.dups.map((d) => `${d.artist} — ${d.title}`).join("; ")}`);
-  if (r.pending.length) extra.push(`Not on Spotify yet (re-checking each run): ${r.pending.map((p) => `${p.artist} — ${p.title}${p.source_url ? ` <${p.source_url}>` : ""}`).join("; ")}`);
+  if (r.pending.length) extra.push(`Not on Spotify yet (looked for again later): ${r.pending.map((p) => `${p.artist} — ${p.title}${p.source_url ? ` <${p.source_url}>` : ""}`).join("; ")}`);
   if (r.newLabels.length) extra.push(`New labels for this lane: ${r.newLabels.join(", ")}`);
   if (r.droppedLabels.length) extra.push(`Gone quiet, dropped: ${r.droppedLabels.join(", ")}`);
   if (r.quietSeeds.length) extra.push(`Seed labels with nothing new for a while: ${r.quietSeeds.join(", ")}`);

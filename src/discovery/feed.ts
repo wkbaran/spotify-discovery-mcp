@@ -1,5 +1,5 @@
 import { textKey } from "job-ledger";
-import { quoteSafe, rethrowRateLimit, type Album, type SpotifyClient, type Track } from "../spotify/client.js";
+import { quoteSafe, RateLimitError, rethrowRateLimit, type Album, type SpotifyClient, type Track } from "../spotify/client.js";
 import { labelContains, labelFromCopyrights, labelKey, releaseDay } from "./keys.js";
 import type { Lane } from "./lanes.js";
 import type { LaneState } from "./state.js";
@@ -20,12 +20,12 @@ export interface FeedResult {
   activeLabels: Set<string>;
   /** Label keys actually searched this run. */
   searchedLabels: string[];
-  /** Artist ids looked up this run, to cache. */
+  /** No longer filled (0.6.0: artists are found by search); kept so run files keep their shape. */
   artistIds: Record<string, string | null>;
   /** Source keys checked this run, for LaneState.checked. */
   checked: string[];
   /** Sources checked of all, why the check stopped, and the oldest last check among those left waiting. */
-  stats: { checked: number; total: number; stopped: "done" | "tracks" | "requests"; oldest_waiting?: string };
+  stats: { checked: number; total: number; stopped: "done" | "tracks" | "requests" | "blocked"; oldest_waiting?: string };
   notes: string[];
 }
 
@@ -105,6 +105,9 @@ export interface FeedOptions {
   fallbackSince: string;
   /** True for a track the lane hasn't seen, recommended, closed or pooled; only these count toward feed_tracks. */
   isNew: (t: Track) => boolean;
+  /** Override the lane's feed_tracks / feed_requests, e.g. to look only for as many as a run is short. */
+  maxTracks?: number;
+  maxRequests?: number;
 }
 
 /**
@@ -112,7 +115,13 @@ export interface FeedOptions {
  * its own last check. It works down sourceQueue() and stops once it has
  * `lane.feed_tracks` new tracks or has used `lane.feed_requests` requests; the
  * sources left over go first next run. Failures are noted and skipped (a failed
- * source isn't marked checked); the feed never throws, except on a rate limit.
+ * source isn't marked checked). A rate limit ends the feed with what it has
+ * found; the run goes on without the rest.
+ *
+ * Artists are found with `artist:"…"` album search, like labels, not with
+ * `/artists/{id}/albums`: that endpoint has its own Development Mode quota of
+ * roughly 80 requests a day (blocked for 24 h on 2026-10-19 after 76), while
+ * search had room for hundreds.
  */
 export async function collectFeed(client: SpotifyClient, lane: Lane, state: LaneState, opts: FeedOptions): Promise<FeedResult> {
   const { today } = opts;
@@ -124,6 +133,8 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
   const artistIds: Record<string, string | null> = {};
   const checked: string[] = [];
   const queue = sourceQueue(lane, state);
+  const maxTracks = opts.maxTracks ?? lane.feed_tracks;
+  const maxRequests = opts.maxRequests ?? lane.feed_requests;
   const start = client.requests;
   const floor = addDays(today, -MAX_LOOKBACK_DAYS);
   let newTracks = 0;
@@ -131,11 +142,11 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
   let i = 0;
 
   for (; i < queue.length; i++) {
-    if (newTracks >= lane.feed_tracks) {
+    if (newTracks >= maxTracks) {
       stopped = "tracks";
       break;
     }
-    if (client.requests - start >= lane.feed_requests) {
+    if (client.requests - start >= maxRequests) {
       stopped = "requests";
       break;
     }
@@ -145,20 +156,17 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
     const fresh = (a: Album) => releaseDay(a.release_date) >= since && releaseDay(a.release_date) <= today;
     try {
       let found: FeedRelease[];
+      const recentEnough = daysBetween(since, today) <= TAG_NEW_DAYS;
+      const when = recentEnough ? "tag:new" : `year:${since.slice(0, 4)}-${today.slice(0, 4)}`;
       if (src.kind === "label") {
-        const recentEnough = daysBetween(since, today) <= TAG_NEW_DAYS;
-        const q = recentEnough ? `label:"${quoteSafe(src.name)}" tag:new` : `label:"${quoteSafe(src.name)}" year:${since.slice(0, 4)}-${today.slice(0, 4)}`;
-        found = (await client.searchAlbums(q, recentEnough ? 2 : 5)).filter(fresh).map((a) => ({ album: a, label: src.name, via: { kind: "label", name: src.name, group: src.group, spotifyName: src.spotifyName }, tracks: [] }));
+        found = (await client.searchAlbums(`label:"${quoteSafe(src.name)}" ${when}`, recentEnough ? 2 : 5)).filter(fresh).map((a) => ({ album: a, label: src.name, via: { kind: "label", name: src.name, group: src.group, spotifyName: src.spotifyName }, tracks: [] }));
         searchedLabels.push(labelKey(src.name));
       } else {
+        // `artist:` search is loose too ("Rift" finds "Riftwalker"), so the release's own artists must name them.
         const k = textKey(src.name);
-        let id = state.artist_ids[k];
-        if (id === undefined) {
-          const hits = await client.searchArtists(src.name);
-          id = hits.find((a) => textKey(a.name) === k)?.id ?? null;
-          artistIds[k] = id;
-        }
-        found = id ? (await client.artistAlbums(id, 10)).filter(fresh).map((a) => ({ album: a, via: { kind: "artist", name: src.name, group: "artist" }, tracks: [] })) : [];
+        found = (await client.searchAlbums(`artist:"${quoteSafe(src.name)}" ${when}`, recentEnough ? 1 : 2))
+          .filter((a) => fresh(a) && a.artists.some((x) => textKey(x.name) === k))
+          .map((a) => ({ album: a, via: { kind: "artist", name: src.name, group: "artist" }, tracks: [] }));
       }
       for (const r of found) {
         if (albums.has(r.album.id) || albums.size >= MAX_RELEASES) continue;
@@ -171,7 +179,11 @@ export async function collectFeed(client: SpotifyClient, lane: Lane, state: Lane
       }
       checked.push(src.key);
     } catch (err) {
-      rethrowRateLimit(err);
+      if (err instanceof RateLimitError) {
+        notes.push(`Spotify stopped the known-source check: ${err.message}`);
+        stopped = "blocked";
+        break;
+      }
       notes.push(src.kind === "label" ? `Label ${src.name}: search failed (${short(err)}).` : `Artist ${src.name}: lookup failed (${short(err)}).`);
     }
   }

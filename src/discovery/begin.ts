@@ -2,12 +2,12 @@ import { isoSeconds, localDate, textKey } from "job-ledger";
 import type { FetchLike } from "../auth/tokens.js";
 import type { MetadataSource } from "../config.js";
 import { fitsLane, genreLookup } from "../metadata/lookup.js";
-import { playlistUrl, rethrowRateLimit, type SpotifyClient, type Track } from "../spotify/client.js";
+import { playlistUrl, RateLimitError, type SpotifyClient, type Track } from "../spotify/client.js";
 import { addDays, collectFeed, labelSources, type FeedRelease } from "./feed.js";
 import { labelKey, releaseDay, splitArtists, spotifyTrackKey } from "./keys.js";
 import { getLane, loadCoreArtists, loadLanes, playlistName, type Lane } from "./lanes.js";
 import { renderWorkList } from "./render.js";
-import { DAYS_KEPT, readHistory, readLaneState, runStore, Seen, updateDays, type Day, type LaneState, type PoolItem, type RunFile, type RunItem } from "./state.js";
+import { DAYS_KEPT, readDays, readHistory, readLaneState, runStore, Seen, updateDays, type Day, type LaneState, type PoolItem, type RunFile, type RunItem } from "./state.js";
 import { findOnSpotify } from "./verify.js";
 
 export interface Ctx {
@@ -43,7 +43,16 @@ export async function todaysPlaylist(ctx: Ctx, day: string, template: { name: st
   return r.result;
 }
 
-export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: RunFile; view: string }> {
+export interface BeginOptions {
+  /**
+   * false: don't check the known labels and artists or the pending finds yet;
+   * discovery_fill does that later, only if the web research falls short. The
+   * default (true) does both now, as before 0.6.0.
+   */
+  feed?: boolean;
+}
+
+export async function discoveryBegin(ctx: Ctx, laneId: string, opts: BeginOptions = {}): Promise<{ run: RunFile; view: string }> {
   const now = ctx.now?.() ?? new Date();
   const requestsAtStart = ctx.client.requests;
   const lanes = await loadLanes(ctx.dir);
@@ -71,98 +80,10 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
   const since = state.last_run ? addDays(localDate(new Date(state.last_run), lanes.timezone), -1) : addDays(day, -FIRST_RUN_DAYS);
   const notes: string[] = [];
   const effects: RunFile["effects"] = { expired: [], pending_found: [], pending_dropped: [], pending_checked: [], artist_ids: {}, searched_labels: [], active_labels: [] };
-  const taken = new Set<string>(); // keys already given a ref in this run
-
-  // 1. Pending web finds: on Spotify yet?
-  const pendingNow: PoolItem[] = [];
-  for (const p of Object.values(state.pending).slice(0, MAX_PENDING_CHECKS)) {
-    if (addDays(p.first_seen, lane.pending_days) < day) {
-      effects.pending_dropped.push(p.key);
-      continue;
-    }
-    try {
-      const v = await findOnSpotify(ctx.client, { artist: p.artist, track: p.title, release: p.release, label: p.label });
-      if (!v) {
-        effects.pending_checked.push(p.key);
-        continue;
-      }
-      if (seen.find({ uri: v.track.uri, key: spotifyTrackKey(v.track), isrc: v.track.external_ids?.isrc })) {
-        effects.pending_dropped.push(p.key); // recommended some other way since
-        continue;
-      }
-      effects.pending_found.push(p.key);
-      pendingNow.push({ ...toPoolItem(v.track, { source: "web", label: v.label, p_label: v.pLabel, why: p.why, source_url: p.source_url, first_seen: p.first_seen }), passes: 0 });
-    } catch (err) {
-      rethrowRateLimit(err);
-      effects.pending_checked.push(p.key);
-    }
-  }
-
-  // 2. The feed: known labels and artists, longest-waiting first, until feed_tracks new tracks or feed_requests requests.
-  const pendingRequests = ctx.client.requests - requestsAtStart;
-  const feed = await collectFeed(ctx.client, lane, state, {
-    today: day,
-    fallbackSince: since,
-    isNew: (t) => {
-      const key = spotifyTrackKey(t);
-      return !seen.find({ uri: t.uri, key }) && !state.closed[key] && !state.pool[key];
-    },
-  });
-  const feedRequests = ctx.client.requests - requestsAtStart - pendingRequests;
-  notes.push(...feed.notes);
-  if (feed.stats.checked < feed.stats.total) {
-    const why = feed.stats.stopped === "tracks" ? `${lane.feed_tracks} new tracks found` : `${lane.feed_requests}-request budget used`;
-    const oldest = feed.stats.oldest_waiting === "never" ? "some never checked yet" : `oldest last checked ${feed.stats.oldest_waiting}`;
-    notes.push(`Checked ${feed.stats.checked} of ${feed.stats.total} known labels and artists (${why}); the other ${feed.stats.total - feed.stats.checked} go first next run (${oldest}).`);
-  }
-  effects.artist_ids = feed.artistIds;
-  effects.searched_labels = feed.searchedLabels;
-  effects.active_labels = [...feed.activeLabels];
-  effects.checked = feed.checked;
-
   const items: Record<string, RunItem> = {};
-  const groups: Record<string, string[]> = {};
   const order: RunFile["order"] = { feed: [], carried: [], web: [] };
-  const groupRank = { promoted: 0, artist: 1, seed: 2, found: 3 } as const;
-  const releases = [...feed.releases].sort(
-    (a, b) => groupRank[a.via.group] - groupRank[b.via.group] || releaseDay(b.album.release_date).localeCompare(releaseDay(a.album.release_date)),
-  );
 
-  let n = 0;
-  let hidden = 0;
-  for (const r of releases) {
-    const fresh = r.tracks.filter((t) => {
-      const key = spotifyTrackKey(t);
-      return !taken.has(key) && !seen.find({ uri: t.uri, key }) && !state.closed[key] && !state.pool[key];
-    });
-    if (!fresh.length) continue;
-    if (order.feed.length >= lane.feed_cap) {
-      hidden++;
-      continue;
-    }
-    n++;
-    const ref = `K${n}`;
-    order.feed.push(ref);
-    const shown = fresh.slice(0, MAX_TRACKS_PER_RELEASE);
-    const make = (t: Track, itemRef: string): RunItem => {
-      const pool = toPoolItem(t, { source: "feed", label: r.label, p_label: r.pLabel, via: `${r.via.kind} ${r.via.name}`, first_seen: day }, r);
-      taken.add(pool.key);
-      return { ...pool, ref: itemRef, kind: "K", core: isCore(pool.artists) };
-    };
-    if (shown.length === 1) {
-      items[ref] = make(shown[0]!, ref);
-    } else {
-      groups[ref] = shown.map((t, i) => {
-        const sub = `${ref}.${i + 1}`;
-        items[sub] = make(t, sub);
-        return sub;
-      });
-      if (fresh.length > shown.length) notes.push(`${ref} has ${fresh.length - shown.length} more tracks not listed.`);
-    }
-  }
-
-  // 3. Carried over from earlier runs, and pending finds now on Spotify.
-  let c = 0;
+  // Carried over from earlier runs: already checked, so they cost no requests.
   const expiredBefore = addDays(day, -lane.max_age_days);
   const carried = Object.values(state.pool)
     .filter((p) => {
@@ -170,29 +91,14 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
         effects.expired.push(p.key);
         return false;
       }
-      return !taken.has(p.key) && !seen.find(p);
+      return !seen.find(p);
     })
     .sort((a, b) => a.passes - b.passes || releaseDay(b.released).localeCompare(releaseDay(a.released)));
-  for (const p of [...pendingNow, ...carried].slice(0, MAX_CARRIED)) {
-    c++;
-    const ref = `C${c}`;
-    taken.add(p.key);
+  for (const [i, p] of carried.slice(0, MAX_CARRIED).entries()) {
+    const ref = `C${i + 1}`;
     items[ref] = { ...p, ref, kind: "C", core: isCore(p.artists) };
     order.carried.push(ref);
   }
-
-  // 4. Genre for what's shown (fail-open, a bounded number of lookups).
-  if (ctx.metadata.has("beatport") || ctx.metadata.has("deezer")) {
-    // One track per release first, so every release gets a genre line; then the rest.
-    const firsts = [...order.feed.map((r) => (groups[r] ? groups[r]![0]! : r)), ...order.carried];
-    const rest = Object.keys(items).filter((r) => !firsts.includes(r));
-    const todo = [...firsts, ...rest].map((r) => items[r]!).filter((i) => i.meta === undefined).slice(0, MAX_META_LOOKUPS);
-    await mapLimit(todo, 3, async (i) => {
-      i.meta = await genreLookup(ctx.fetchImpl, ctx.metadata, i);
-      i.fit = fitsLane(i.meta, lane);
-    });
-  }
-  for (const i of Object.values(items)) if (i.fit === undefined && i.meta) i.fit = fitsLane(i.meta, lane);
 
   const id = await runs.newId(now, lane.id);
   const run: RunFile = {
@@ -203,19 +109,177 @@ export async function discoveryBegin(ctx: Ctx, laneId: string): Promise<{ run: R
     playlist: { id: playlist.playlist_id, name: playlist.name, url: playlist.url, tracks_before: playlist.tracks.length },
     since,
     items,
-    groups,
+    groups: {},
     order,
-    hidden,
+    hidden: 0,
     notes,
     labels_found: [],
     effects,
-    spotify_requests: ctx.client.requests - requestsAtStart,
-    requests_by_step: { pending: pendingRequests, feed: feedRequests, begin: ctx.client.requests - requestsAtStart },
-    feed: feed.stats,
+    spotify_requests: 0,
+    requests_by_step: {},
   };
+  if (opts.feed === false) {
+    // Known sources wait for discovery_fill, which looks only for as many as the run is short.
+    run.deferred = true;
+    await lookUpGenres(ctx, run);
+  } else {
+    await fillRun(ctx, run, lane, state, { seen, core });
+  }
+  run.spotify_requests = ctx.client.requests - requestsAtStart;
+  run.requests_by_step = { ...run.requests_by_step, begin: ctx.client.requests - requestsAtStart };
   await runs.write(id, run);
   await runs.prune(lane.id);
   return { run, view: renderWorkList(run, lane, { labels: labelSources(lane, state).map((s) => s.name), artists: coveredArtists(lane, state, coreArtists) }) };
+}
+
+/** How the known-source check is sized when a run is short by `need` picks: about three candidates and ten requests per missing pick. */
+export const fillBudget = (lane: Lane, need: number) => ({ maxTracks: Math.min(lane.feed_tracks, need * 3), maxRequests: Math.min(lane.feed_requests, 10 + need * 8) });
+
+/** A pending find is looked for again at most this often. Most never turn up, so a daily search wasted requests. */
+export const PENDING_RECHECK_DAYS = 7;
+
+/**
+ * Adds to an open run what the known sources have: new releases from the lane's
+ * labels and artists (K refs), then, only if that found fewer than `need` new
+ * tracks, the pending web finds that are now on Spotify (C refs). Without `need`,
+ * the lane's own budgets apply and the pending finds are always checked (the
+ * one-step begin). Writes nothing; the caller saves the run. Returns the new refs.
+ */
+export async function fillRun(ctx: Ctx, run: RunFile, lane: Lane, state: LaneState, o: { need?: number; seen?: Seen; core?: Set<string> } = {}): Promise<string[]> {
+  const startRequests = ctx.client.requests;
+  const seen = o.seen ?? new Seen(await readHistory(ctx.dir), (await readDays(ctx.dir)).days[run.day]);
+  const core = o.core ?? new Set((await loadCoreArtists(ctx.dir)).map(textKey));
+  const isCore = (artists: string[]) => artists.some((a) => core.has(textKey(a)));
+  const taken = new Set(Object.values(run.items).map((i) => i.key));
+  const effects = run.effects;
+  const added: string[] = [];
+
+  // 1. The feed: known labels and artists, longest-waiting first.
+  const budget = o.need === undefined ? {} : fillBudget(lane, o.need);
+  const feed = await collectFeed(ctx.client, lane, state, {
+    today: run.day,
+    fallbackSince: run.since,
+    ...budget,
+    isNew: (t) => {
+      const key = spotifyTrackKey(t);
+      return !seen.find({ uri: t.uri, key }) && !state.closed[key] && !state.pool[key] && !taken.has(key);
+    },
+  });
+  run.notes.push(...feed.notes);
+  if (feed.stats.checked < feed.stats.total && feed.stats.stopped !== "blocked") {
+    const why = feed.stats.stopped === "tracks" ? `enough new tracks found` : `request budget used`;
+    const oldest = feed.stats.oldest_waiting === "never" ? "some never checked yet" : `oldest last checked ${feed.stats.oldest_waiting}`;
+    run.notes.push(`Checked ${feed.stats.checked} of ${feed.stats.total} known labels and artists (${why}); the other ${feed.stats.total - feed.stats.checked} go first next time (${oldest}).`);
+  }
+  Object.assign(effects.artist_ids, feed.artistIds);
+  effects.searched_labels.push(...feed.searchedLabels);
+  effects.active_labels.push(...feed.activeLabels);
+  effects.checked = [...(effects.checked ?? []), ...feed.checked];
+  run.feed = feed.stats;
+
+  const groupRank = { promoted: 0, artist: 1, seed: 2, found: 3 } as const;
+  const releases = [...feed.releases].sort(
+    (a, b) => groupRank[a.via.group] - groupRank[b.via.group] || releaseDay(b.album.release_date).localeCompare(releaseDay(a.album.release_date)),
+  );
+  let n = run.order.feed.length;
+  let newTracks = 0;
+  for (const r of releases) {
+    const fresh = r.tracks.filter((t) => {
+      const key = spotifyTrackKey(t);
+      return !taken.has(key) && !seen.find({ uri: t.uri, key }) && !state.closed[key] && !state.pool[key];
+    });
+    if (!fresh.length) continue;
+    if (run.order.feed.length >= lane.feed_cap) {
+      run.hidden++;
+      continue;
+    }
+    n++;
+    const ref = `K${n}`;
+    run.order.feed.push(ref);
+    added.push(ref);
+    const shown = fresh.slice(0, MAX_TRACKS_PER_RELEASE);
+    newTracks += shown.length;
+    const make = (t: Track, itemRef: string): RunItem => {
+      const pool = toPoolItem(t, { source: "feed", label: r.label, p_label: r.pLabel, via: `${r.via.kind} ${r.via.name}`, first_seen: run.day }, r);
+      taken.add(pool.key);
+      return { ...pool, ref: itemRef, kind: "K", core: isCore(pool.artists) };
+    };
+    if (shown.length === 1) {
+      run.items[ref] = make(shown[0]!, ref);
+    } else {
+      run.groups[ref] = shown.map((t, i) => {
+        const sub = `${ref}.${i + 1}`;
+        run.items[sub] = make(t, sub);
+        return sub;
+      });
+      if (fresh.length > shown.length) run.notes.push(`${ref} has ${fresh.length - shown.length} more tracks not listed.`);
+    }
+  }
+  const feedRequests = ctx.client.requests - startRequests;
+
+  // 2. Pending web finds, last: most never turn up. Each is looked for at most weekly, longest-unchecked first.
+  if (o.need === undefined || newTracks < o.need) {
+    const due = Object.values(state.pending)
+      .filter((p) => !p.last_checked || addDays(p.last_checked, PENDING_RECHECK_DAYS) <= run.day)
+      .sort((a, b) => (a.last_checked ?? "").localeCompare(b.last_checked ?? "") || a.first_seen.localeCompare(b.first_seen))
+      .slice(0, MAX_PENDING_CHECKS);
+    let c = run.order.carried.length;
+    for (const p of due) {
+      // "LABEL — …" entries came from label lines read as tracks before 0.3.x.
+      if (addDays(p.first_seen, lane.pending_days) < run.day || /^label$/i.test(p.artist.trim())) {
+        effects.pending_dropped.push(p.key);
+        continue;
+      }
+      try {
+        const v = await findOnSpotify(ctx.client, { artist: p.artist, track: p.title, release: p.release, label: p.label }, { quick: true });
+        if (!v) {
+          effects.pending_checked.push(p.key);
+          continue;
+        }
+        if (seen.find({ uri: v.track.uri, key: spotifyTrackKey(v.track), isrc: v.track.external_ids?.isrc })) {
+          effects.pending_dropped.push(p.key); // recommended some other way since
+          continue;
+        }
+        effects.pending_found.push(p.key);
+        const item = toPoolItem(v.track, { source: "web", label: v.label, p_label: v.pLabel, why: p.why, source_url: p.source_url, first_seen: p.first_seen });
+        if (taken.has(item.key)) continue;
+        taken.add(item.key);
+        const ref = `C${++c}`;
+        run.items[ref] = { ...item, ref, kind: "C", core: isCore(item.artists) };
+        run.order.carried.push(ref);
+        added.push(ref);
+      } catch (err) {
+        if (err instanceof RateLimitError) {
+          run.notes.push(`Spotify stopped the pending check: ${err.message}`);
+          break;
+        }
+        effects.pending_checked.push(p.key);
+      }
+    }
+  }
+
+  await lookUpGenres(ctx, run);
+  run.requests_by_step = {
+    ...run.requests_by_step,
+    feed: (run.requests_by_step?.feed ?? 0) + feedRequests,
+    pending: (run.requests_by_step?.pending ?? 0) + ctx.client.requests - startRequests - feedRequests,
+  };
+  return added;
+}
+
+/** Genre for what's shown (fail-open, a bounded number of lookups), one track per release first. */
+async function lookUpGenres(ctx: Ctx, run: RunFile): Promise<void> {
+  const lane = getLane(await loadLanes(ctx.dir), run.lane);
+  if (ctx.metadata.has("beatport") || ctx.metadata.has("deezer")) {
+    const firsts = [...run.order.feed.map((r) => (run.groups[r] ? run.groups[r]![0]! : r)), ...run.order.carried];
+    const rest = Object.keys(run.items).filter((r) => !firsts.includes(r) && !r.startsWith("W"));
+    const todo = [...firsts, ...rest].map((r) => run.items[r]!).filter((i) => i.meta === undefined).slice(0, MAX_META_LOOKUPS);
+    await mapLimit(todo, 3, async (i) => {
+      i.meta = await genreLookup(ctx.fetchImpl, ctx.metadata, i);
+      i.fit = fitsLane(i.meta, lane);
+    });
+  }
+  for (const i of Object.values(run.items)) if (i.fit === undefined && i.meta) i.fit = fitsLane(i.meta, lane);
 }
 
 /** Artists the research should skip: lane artists plus learned ones. */

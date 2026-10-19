@@ -126,7 +126,7 @@ it("docs/discovery-tools.md matches what the discovery tools do", async () => {
 
   // Argument tables list exactly the tool's input fields.
   const { tools } = await client.listTools();
-  for (const tool of ["discovery_begin", "verify_tracks", "discovery_review", "discovery_finish", "discovery_status", "mark_recommended", "forget"]) {
+  for (const tool of ["discovery_begin", "discovery_fill", "verify_tracks", "discovery_review", "discovery_finish", "discovery_status", "mark_recommended", "forget"]) {
     const schema = tools.find((t) => t.name === tool)!.inputSchema as { properties?: Record<string, unknown> };
     expect(argTable(doc, tool).sort(), `argument table for ${tool}`).toEqual(Object.keys(schema.properties ?? {}).sort());
   }

@@ -40,7 +40,7 @@ export interface PoolItem {
   meta?: Meta | null;
 }
 
-/** A web find that wasn't on Spotify yet; re-checked each run until `pending_days`. */
+/** A web find that wasn't on Spotify yet; looked for again at most weekly (when a run is short) until `pending_days`. */
 export interface PendingItem {
   key: string;
   artist: string;
@@ -52,6 +52,8 @@ export interface PendingItem {
   source_url?: string;
   first_seen: string;
   checks: number;
+  /** The day it was last looked for. */
+  last_checked?: string;
 }
 
 export interface LearnedLabel {
@@ -200,12 +202,16 @@ export interface RunFile {
   finished?: { at: string; report: string };
   /** When discovery_review was first called; discovery_finish requires it. */
   reviewed_at?: string;
+  /** Begun with `feed: false`: the known sources and pending finds wait for discovery_fill. */
+  deferred?: boolean;
+  /** When discovery_fill ran, and how many picks the run was short. */
+  filled?: { at: string; need: number };
   /** Spotify API requests made for this run so far (begin, verify_tracks, finish). */
   spotify_requests?: number;
   /** The same, by step: begin's pending checks and known-source feed, verify_tracks, finish. */
   requests_by_step?: { pending?: number; feed?: number; begin?: number; verify?: number; finish?: number };
   /** How the known-source check went: sources checked of all, and why it stopped. */
-  feed?: { checked: number; total: number; stopped: "done" | "tracks" | "requests"; oldest_waiting?: string };
+  feed?: { checked: number; total: number; stopped: "done" | "tracks" | "requests" | "blocked"; oldest_waiting?: string };
 }
 
 /** Lane-specific state files live under lanes/. */

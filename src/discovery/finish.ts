@@ -4,11 +4,11 @@ import { rethrowRateLimit } from "../spotify/client.js";
 import { addDays } from "./feed.js";
 import { labelKey, spotifyTrackKey, trackKey } from "./keys.js";
 import { getLane, loadCoreArtists, loadLanes, type Lane } from "./lanes.js";
-import { REPORT_MARKER, renderReport, renderReview, renderVerifyLines } from "./render.js";
+import { REPORT_MARKER, renderFill, renderReport, renderReview, renderVerifyLines } from "./render.js";
 import { applyPickRules } from "./rules.js";
 import { readDays, readHistory, readLaneState, runStore, Seen, updateDays, updateHistory, updateLaneState, type RunFile, type RunItem } from "./state.js";
 import { findOnSpotify, parseCandidatesText, type Candidate, type FoundLabel } from "./verify.js";
-import { toPoolItem, type Ctx } from "./begin.js";
+import { fillRun, toPoolItem, type Ctx } from "./begin.js";
 
 const MAX_CANDIDATES = 25;
 const MAX_POOL = 200;
@@ -59,7 +59,7 @@ export async function verifyTracks(ctx: Ctx, laneId: string, input: { candidates
           kind: "W",
           core: false,
           status: "pending",
-          status_note: "not on Spotify (yet); re-checked each run",
+          status_note: "not on Spotify (yet); looked for again later",
         };
       } else {
         const pool = toPoolItem(v.track, { source: "web", label: v.label, p_label: v.pLabel, ...base });
@@ -113,6 +113,39 @@ export async function discoveryReview(dir: string, laneId: string): Promise<stri
     await runStore(dir).write(run.id, run);
   }
   return renderReview(run, lane, web);
+}
+
+/**
+ * discovery_fill: for a run begun with `feed: false`, after the model has chosen
+ * from the web finds. Works out how many more picks the lane has room for
+ * (`picks` so far, under the pick rules), then checks the known labels and
+ * artists, and the pending finds, for about that many. Once per run.
+ */
+export async function discoveryFill(ctx: Ctx, laneId: string, picksSoFar: string[]): Promise<string> {
+  const lanes = await loadLanes(ctx.dir);
+  const lane = getLane(lanes, laneId);
+  const run = await openRun(ctx.dir, lane.id);
+  if (run.finished) return `Lane ${lane.id}'s latest run is already finished.`;
+  if (!run.deferred) return "This run already has its known-source tracks (it wasn't begun with feed: false). Nothing to add.";
+  if (run.filled) return `Already filled at ${run.filled.at}; nothing new. Call discovery_review for the full list.`;
+
+  const items = resolveRefs(picksSoFar, (r) => run.items[r] ?? (run.groups[r]?.[0] ? run.items[run.groups[r]![0]!] : undefined)).found.map((f) => f.item);
+  const usable = items.filter((i) => i.kind !== "W" || i.status === "ok");
+  const verifiedWeb = Object.values(run.items).filter((i) => i.kind === "W" && i.status === "ok").length;
+  const rules = applyPickRules(usable.map((i) => ({ ref: i.ref, fromFeed: i.kind !== "W", core: i.core })), lane, verifiedWeb);
+  const feedKept = rules.kept.filter((r) => run.items[r]!.kind !== "W").length;
+  const need = Math.max(0, Math.min(lane.target[1] - rules.kept.length, rules.feedLimit - feedKept));
+  const now = ctx.now?.() ?? new Date();
+  run.filled = { at: isoSeconds(now), need };
+  let added: string[] = [];
+  if (need > 0) {
+    const state = await readLaneState(ctx.dir, lane.id);
+    const before = ctx.client.requests;
+    added = await fillRun(ctx, run, lane, state, { need });
+    run.spotify_requests = (run.spotify_requests ?? 0) + ctx.client.requests - before;
+  }
+  await runStore(ctx.dir).write(run.id, run);
+  return renderFill(run, lane, added, need);
 }
 
 export interface FinishArgs {
@@ -333,7 +366,13 @@ export function applyToLane(s: import("./state.js").LaneState, c: LaneChange) {
     s.closed[k] ??= { status: "expired", date: day };
   }
   for (const k of [...e.pending_found, ...e.pending_dropped]) delete s.pending[k];
-  for (const k of e.pending_checked) if (s.pending[k]) s.pending[k]!.checks++;
+  for (const k of e.pending_checked) {
+    const p = s.pending[k];
+    if (p) {
+      p.checks++;
+      p.last_checked = day;
+    }
+  }
   Object.assign(s.artist_ids, e.artist_ids);
   for (const k of e.checked ?? []) s.checked[k] = laterDay(s.checked[k], run.day);
 
